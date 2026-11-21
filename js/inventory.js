@@ -176,12 +176,28 @@
         <tbody id="pr-rows"></tbody></table></div>`;
 
     function draw() {
-      const rows = App.state.products.slice().sort((a, b) =>
-        a.quality.localeCompare(b.quality, 'ar') || a.gsm - b.gsm || a.size - b.size);
+      const familyOf = (name) => {
+        const value = String(name || '').replace(/[\\s\\u0640]+/g, ' ').trim().toLowerCase();
+        if (value.includes('تست') && value.includes('لينر') && value.includes('معالج')) return 'تست لينر معالج';
+        if (value.includes('توب') && value.includes('لاينر')) return 'توب لاينر';
+        // Keep any legacy/unclassified product visible instead of dropping it.
+        return String(name || '').trim();
+      };
+      const familyOrder = ['تست لينر معالج', 'توب لاينر'];
+      const rows = App.state.products.slice().sort((a, b) => {
+        const fa = familyOf(a.quality), fb = familyOf(b.quality);
+        const ia = familyOrder.indexOf(fa), ib = familyOrder.indexOf(fb);
+        const oa = ia < 0 ? familyOrder.length : ia, ob = ib < 0 ? familyOrder.length : ib;
+        return oa - ob || fa.localeCompare(fb, 'ar') || Number(a.gsm) - Number(b.gsm) || Number(a.size) - Number(b.size);
+      });
+      const shownFamilies = new Set();
       host.querySelector('#pr-rows').innerHTML = rows.map((p) => {
         const b = App.state.balances.get(p.combo);
+        const family = familyOf(p.quality);
+        const showFamily = !shownFamilies.has(family);
+        shownFamilies.add(family);
         return `<tr>
-          <td data-label="${t('quality')}">${esc(p.quality)}</td>
+          <td data-label="${t('quality')}">${showFamily ? esc(family) : ''}</td>
           <td data-label="${t('gsm')}">${fmtNum(p.gsm)}</td>
           <td data-label="${t('size')}">${fmtNum(p.size)}</td>
           <td data-label="${t('balance')}" class="num">${fmtNum(b ? b.net : 0)}</td>
