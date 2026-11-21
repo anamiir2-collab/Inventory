@@ -116,12 +116,23 @@
       const title = lang() ? rep.name : rep.en;
 
       if (current === 'balance' || current === 'stocktake') {
+        const familyOf = (name) => {
+          const value = String(name || '').replace(/[\\s\\u0640]+/g, ' ').trim().toLowerCase();
+          if (value.includes('تست') && value.includes('لينر') && value.includes('معالج')) return 'تست لينر معالج';
+          if (value.includes('توب') && value.includes('لاينر')) return 'توب لاينر';
+          return String(name || '').trim();
+        };
+        const familyOrder = ['تست لينر معالج', 'توب لاينر'];
         let rows = App.state.products.map((p) => {
           const b = App.state.balances.get(p.combo);
           const net = b ? b.net : 0;
-          return { quality: p.quality, gsm: p.gsm, size: p.size, net, weight: global.CALC.productWeight(p.size, net, wf), combo: p.combo };
+          return { quality: p.quality, family: familyOf(p.quality), gsm: p.gsm, size: p.size, net, weight: global.CALC.productWeight(p.size, net, wf), combo: p.combo };
         }).filter(filterCombo).filter((r) => r.net !== 0);
-        rows.sort((a, b) => a.quality.localeCompare(b.quality, 'ar') || a.gsm - b.gsm || a.size - b.size);
+        rows.sort((a, b) => {
+          const ia = familyOrder.indexOf(a.family), ib = familyOrder.indexOf(b.family);
+          const oa = ia < 0 ? familyOrder.length : ia, ob = ib < 0 ? familyOrder.length : ib;
+          return oa - ob || a.family.localeCompare(b.family, 'ar') || Number(a.gsm) - Number(b.gsm) || Number(a.size) - Number(b.size);
+        });
         const totals = {
           net: global.CALC.round6(rows.reduce((s, r) => s + r.net, 0)),
           weight: global.CALC.round6(rows.reduce((s, r) => s + r.weight, 0)),
@@ -132,7 +143,7 @@
           headers: [t('quality'), t('gsm'), t('size'), t('balance'), t('weight') + ' (' + t('kg') + ')'],
           // Show each main product name once per consecutive group; list only its available GSM/size variants below it.
           rows: rows.map((r, index) => [
-            index === 0 || rows[index - 1].quality !== r.quality ? r.quality : '',
+            index === 0 || rows[index - 1].family !== r.family ? r.family : '',
             fmtNum(r.gsm), fmtNum(r.size), fmtNum(r.net), fmtNum(r.weight, 3),
           ]),
           totalsRow: [lang() ? 'الإجمالي' : 'Total', `${fmtNum(rows.length)} ${lang() ? 'صنف' : 'items'}`, '', fmtNum(totals.net), fmtNum(totals.weight, 3)],
