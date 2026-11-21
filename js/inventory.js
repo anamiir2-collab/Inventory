@@ -24,7 +24,6 @@
           <option value="bal-asc">${lang() ? 'الرصيد (تصاعدي)' : 'balance (low→high)'}</option>
           <option value="weight-desc">${lang() ? 'الوزن (تنازلي)' : 'weight (high→low)'}</option>
         </select>
-        <label class="chk"><input type="checkbox" id="inv-nonzero"> ${lang() ? 'الأصناف ذات رصيد فقط' : 'only items with stock'}</label>
         <button class="btn btn-ghost" id="inv-clear">${t('reset')}</button>
       </div>
       <div class="card table-wrap" id="inv-table"></div>`;
@@ -40,7 +39,6 @@
       const g = host.querySelector('#inv-gsm').value;
       const s = host.querySelector('#inv-size').value;
       const sort = host.querySelector('#inv-sort').value;
-      const onlyNonZero = host.querySelector('#inv-nonzero').checked;
       const wf = App.state.settings.weightFactor;
 
       let rows = App.state.products.map((p) => {
@@ -54,7 +52,7 @@
       if (q) rows = rows.filter((r) => r.quality.toLowerCase().includes(q));
       if (g) rows = rows.filter((r) => String(r.gsm) === g);
       if (s) rows = rows.filter((r) => String(r.size) === s);
-      if (onlyNonZero) rows = rows.filter((r) => r.net !== 0);
+      rows = rows.filter((r) => r.net !== 0);
       const cmp = {
         name: (a, b) => a.quality.localeCompare(b.quality, 'ar') || a.gsm - b.gsm || a.size - b.size,
         'bal-desc': (a, b) => b.net - a.net,
@@ -150,12 +148,10 @@
     host.querySelector('#inv-gsm').addEventListener('change', draw);
     host.querySelector('#inv-size').addEventListener('change', draw);
     host.querySelector('#inv-sort').addEventListener('change', draw);
-    host.querySelector('#inv-nonzero').addEventListener('change', draw);
     host.querySelector('#inv-clear').addEventListener('click', () => {
       host.querySelector('#inv-search').value = '';
       host.querySelector('#inv-gsm').value = '';
       host.querySelector('#inv-size').value = '';
-      host.querySelector('#inv-nonzero').checked = false;
       draw();
     });
     host.querySelector('#inv-export').addEventListener('click', () => {
@@ -184,7 +180,10 @@
         return String(name || '').trim();
       };
       const familyOrder = ['تست لينر معالج', 'توب لاينر'];
-      const rows = App.state.products.slice().sort((a, b) => {
+      const rows = App.state.products.filter((p) => {
+        const balance = App.state.balances.get(p.combo);
+        return balance && Number(balance.net) !== 0;
+      }).slice().sort((a, b) => {
         const fa = familyOf(a.quality), fb = familyOf(b.quality);
         const ia = familyOrder.indexOf(fa), ib = familyOrder.indexOf(fb);
         const oa = ia < 0 ? familyOrder.length : ia, ob = ib < 0 ? familyOrder.length : ib;
