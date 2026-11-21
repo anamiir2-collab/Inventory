@@ -120,7 +120,7 @@
           const b = App.state.balances.get(p.combo);
           const net = b ? b.net : 0;
           return { quality: p.quality, gsm: p.gsm, size: p.size, net, weight: global.CALC.productWeight(p.size, net, wf), combo: p.combo };
-        }).filter(filterCombo);
+        }).filter(filterCombo).filter((r) => r.net !== 0);
         rows.sort((a, b) => a.quality.localeCompare(b.quality, 'ar') || a.gsm - b.gsm || a.size - b.size);
         const totals = {
           net: global.CALC.round6(rows.reduce((s, r) => s + r.net, 0)),
@@ -134,7 +134,6 @@
           totalsRow: [lang() ? 'الإجمالي' : 'Total', `${fmtNum(rows.length)} ${lang() ? 'صنف' : 'items'}`, '', fmtNum(totals.net), fmtNum(totals.weight, 3)],
           summary: current === 'stocktake' ? [
             `${lang() ? 'عدد الأصناف' : 'Items'}: ${fmtNum(rows.length)}`,
-            `${lang() ? 'أصناف برصيد صفري' : 'Zero-balance items'}: ${fmtNum(rows.filter((r) => r.net === 0).length)}`,
             `${lang() ? 'أصناف برصيد سالب' : 'Negative-balance items'}: ${fmtNum(rows.filter((r) => r.net < 0).length)}`,
           ] : null,
         };
@@ -234,6 +233,10 @@
         };
       }
 
+      // Hide zero-only summary lines so reports show only meaningful, available data.
+      if (model && Array.isArray(model.summary)) {
+        model.summary = model.summary.filter((line) => !/(?:^|[:：])\s*(?:0+(?:[.,]0+)?)(?:\s|$)/.test(String(line)));
+      }
       lastModel = model;
       if (model) renderPreview(model);
     }
