@@ -439,7 +439,7 @@
           <button class="btn btn-primary" id="btn-add-tx">+ ${lang ? 'حركة جديدة' : 'New transaction'}</button>
           <button class="btn btn-ghost" id="btn-exp-tx">${t('exportExcel')}</button>
         </div></div>
-      <div class="card filters">
+      ${opts.preset === 'out' ? `<div class="card filters">
         <input type="date" id="flt-from" title="${t('from')}">
         <input type="date" id="flt-to" title="${t('to')}">
         <input type="text" id="flt-q" list="flt-qlist" placeholder="${t('quality')}">
@@ -449,24 +449,29 @@
         <input type="text" id="flt-text" placeholder="${lang ? 'بحث في إذن الصرف / ملاحظات' : 'search permit/notes'}">
         <select id="flt-settle"><option value="">${t('settlement')}: ${t('all')}</option><option value="غ">غ</option><option value="ض">ض</option></select>
         <button class="btn btn-ghost" id="flt-clear">${t('reset')}</button>
-      </div>
-      <div class="card table-wrap" id="tx-table-host"></div>`;
+      </div>` : ''}
+      <div class="card table-wrap" id="tx-table-host"></div>``;
 
     const host2 = host.querySelector('#tx-table-host');
     const PAGE_SIZE = 200; /* paginate: the real file has ~24k rows */
     let curList = [], page = 0;
     function applyFilters() {
-      const from = host.querySelector('#flt-from').value;
-      const to = host.querySelector('#flt-to').value;
-      const q = host.querySelector('#flt-q').value.trim();
-      const c = host.querySelector('#flt-c').value.trim();
-      const text = host.querySelector('#flt-text').value.trim().toLowerCase();
-      const st = host.querySelector('#flt-settle').value;
-      let list = rows.filter((r) =>
-        (!from || r.date >= from) && (!to || r.date <= to) &&
-        (!q || r.quality === q) && (!c || r.customer === c) &&
-        (!st || r.settlement === st) &&
-        (!text || (r.permitNo || '').toLowerCase().includes(text) || (r.notes || '').toLowerCase().includes(text)));
+      let list;
+      if (opts.preset === 'out') {
+        const from = host.querySelector('#flt-from').value;
+        const to = host.querySelector('#flt-to').value;
+        const q = host.querySelector('#flt-q').value.trim();
+        const c = host.querySelector('#flt-c').value.trim();
+        const text = host.querySelector('#flt-text').value.trim().toLowerCase();
+        const st = host.querySelector('#flt-settle').value;
+        list = rows.filter((r) =>
+          (!from || r.date >= from) && (!to || r.date <= to) &&
+          (!q || r.quality === q) && (!c || r.customer === c) &&
+          (!st || r.settlement === st) &&
+          (!text || (r.permitNo || '').toLowerCase().includes(text) || (r.notes || '').toLowerCase().includes(text)));
+      } else {
+        list = rows.slice();
+      }
       list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.id || 0) - (a.id || 0)));
       curList = list; page = 0;
       renderRows();
@@ -601,16 +606,18 @@
       });
     }
 
-    host.querySelector('#flt-from').addEventListener('change', applyFilters);
-    host.querySelector('#flt-to').addEventListener('change', applyFilters);
-    host.querySelector('#flt-q').addEventListener('input', applyFilters);
-    host.querySelector('#flt-c').addEventListener('input', applyFilters);
-    host.querySelector('#flt-text').addEventListener('input', applyFilters);
-    host.querySelector('#flt-settle').addEventListener('change', applyFilters);
-    host.querySelector('#flt-clear').addEventListener('click', () => {
-      ['#flt-from', '#flt-to', '#flt-q', '#flt-c', '#flt-text', '#flt-settle'].forEach((s) => { host.querySelector(s).value = ''; });
-      applyFilters();
-    });
+    if (opts.preset === 'out') {
+      host.querySelector('#flt-from').addEventListener('change', applyFilters);
+      host.querySelector('#flt-to').addEventListener('change', applyFilters);
+      host.querySelector('#flt-q').addEventListener('input', applyFilters);
+      host.querySelector('#flt-c').addEventListener('input', applyFilters);
+      host.querySelector('#flt-text').addEventListener('input', applyFilters);
+      host.querySelector('#flt-settle').addEventListener('change', applyFilters);
+      host.querySelector('#flt-clear').addEventListener('click', () => {
+        ['#flt-from', '#flt-to', '#flt-q', '#flt-c', '#flt-text', '#flt-settle'].forEach((s) => { host.querySelector(s).value = ''; });
+        applyFilters();
+      });
+    }
     host.querySelector('#btn-add-tx').addEventListener('click', () => {
       App.pendingPreset = opts.preset || null;
       history_source = opts.preset || 'history';
