@@ -89,7 +89,16 @@
   function txForm(host, existing, preset) {
     const isEdit = !!existing;
     const type = preset || (existing ? (existing.addQty > 0 ? 'add' : 'out') : 'add');
-    const customers = [...new Set(App.state.transactions.map((x) => x.customer).filter(Boolean))].sort();
+    const customers = [...new Set(App.state.transactions.map((x) => x.customer).filter(Boolean))].filter((x) => x !== 'الإنتاج').sort();
+    const productFamily = (name) => {
+      const value = String(name || '').replace(/[\\s\\u0640]+/g, ' ').trim().toLowerCase();
+      if (value.includes('تست') && value.includes('لينر') && value.includes('معالج')) return 'تست لينر معالج';
+      if (value.includes('توب') && value.includes('لاينر')) return 'توب لاينر';
+      return '';
+    };
+    const productFamilies = ['تست لينر معالج', 'توب لاينر'].filter((family) =>
+      App.state.products.some((p) => productFamily(p.quality) === family)
+    );
 
     host.innerHTML = `
       <div class="page-head"><h2>${isEdit ? (UI.getLang() === 'ar' ? 'تعديل حركة' : 'Edit transaction') : t('addtx')}</h2></div>
@@ -108,7 +117,7 @@
             <label class="field"><span>${t('quality')} *</span>
               <select id="f-quality" required>
                 <option value="">— ${UI.getLang() === 'ar' ? 'اختر الصنف' : 'select product'} —</option>
-                ${App.state.products.map((p) => `<option value="${esc(p.quality)}" ${existing && existing.quality === p.quality ? 'selected' : ''}>${esc(p.quality)}</option>`).join('')}
+                ${productFamilies.map((family) => `<option value="${esc(family)}" ${existing && productFamily(existing.quality) === family ? 'selected' : ''}>${esc(family)}</option>`).join('')}
               </select>
               <button type="button" class="link-btn" id="btn-new-product">+ ${UI.getLang() === 'ar' ? 'صنف جديد' : 'new product'}</button>
             </label>
@@ -116,9 +125,10 @@
               <input type="number" id="f-gsm" min="1" step="any" placeholder="135" value="${esc(existing && existing.gsm != null ? existing.gsm : '')}"></label>
             <label class="field"><span>${t('size')} *</span>
               <input type="number" id="f-size" min="1" step="any" placeholder="100" value="${esc(existing && existing.size != null ? existing.size : '')}"></label>
-            <label class="field"><span>${t('customer')} *</span>
-              <input type="text" id="f-customer" list="customer-list" required value="${esc(existing ? existing.customer : '')}">
+            <label class="field" id="f-customer-wrap" ${type === 'add' ? 'hidden' : ''}><span>${UI.getLang() === 'ar' ? 'العميل' : 'Customer'} *</span>
+              <input type="text" id="f-customer" list="customer-list" ${type === 'out' ? 'required' : 'disabled'} value="${esc(type === 'add' ? 'الإنتاج' : (existing ? existing.customer : ''))}">
               <datalist id="customer-list">${customers.map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist></label>
+            ${type === 'add' ? `<div class="field" id="f-production-note"><span>${UI.getLang() === 'ar' ? 'جهة الإضافة' : 'Addition source'}</span><strong>${UI.getLang() === 'ar' ? 'الإنتاج' : 'Production'}</strong></div>` : ''}
             <label class="field"><span>${t('permit')}</span>
               <input type="text" id="f-permit" value="${esc(existing ? existing.permitNo : '')}"></label>
             <label class="field"><span>${t('addQty')}</span>
@@ -157,7 +167,7 @@
     /* prefill gsm/size when choosing a known product (unless editing) */
     qSel.addEventListener('change', () => {
       if (isEdit) return;
-      const p = App.state.products.find((x) => x.quality === qSel.value);
+      const p = App.state.products.find((x) => productFamily(x.quality) === qSel.value);
       if (p) { gsmIn.value = p.gsm != null ? p.gsm : ''; sizeIn.value = p.size != null ? p.size : ''; }
       updateHint();
     });
@@ -169,7 +179,25 @@
         host.querySelectorAll('#tx-type button').forEach((x) => x.classList.toggle('active', x === b));
         addIn.disabled = moveType !== 'add';
         outIn.disabled = moveType !== 'out';
-        if (moveType === 'add') outIn.value = ''; else addIn.value = '';
+        const customerWrap = host.querySelector('#f-customer-wrap');
+        const productionNote = host.querySelector('#f-production-note');
+        if (moveType === 'add') {
+          outIn.value = '';
+          custIn.value = 'الإنتاج';
+          custIn.disabled = true;
+          customerWrap.hidden = true;
+          if (!productionNote) {
+            const note = el(`<div class="field" id="f-production-note"><span>${UI.getLang() === 'ar' ? 'جهة الإضافة' : 'Addition source'}</span><strong>${UI.getLang() === 'ar' ? 'الإنتاج' : 'Production'}</strong></div>`);
+            customerWrap.insertAdjacentElement('beforebegin', note);
+          }
+        } else {
+          addIn.value = '';
+          custIn.disabled = false;
+          custIn.value = isEdit && existing ? existing.customer : '';
+          customerWrap.hidden = false;
+          const note = host.querySelector('#f-production-note');
+          if (note) note.remove();
+        }
         updateHint();
       });
     });
@@ -192,7 +220,7 @@
     /* inline new product */
     host.querySelector('#btn-new-product').addEventListener('click', () => {
       const node = el(`<div class="newprod-form">
-        <label><span>${t('quality')}</span><input id="np-q" type="text"></label>
+        <label><span>${t('quality')}</span><select id="np-q"><option value="تست لينر معالج">تست لينر معالج</option><option value="توب لاينر">توب لاينر</option></select></label>
         <label><span>${t('gsm')}</span><input id="np-g" type="number"></label>
         <label><span>${t('size')}</span><input id="np-s" type="number"></label>
         <div class="confirm-actions">
