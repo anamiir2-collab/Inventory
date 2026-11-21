@@ -809,5 +809,41 @@
   }
 
   global.App = App;
-  document.addEventListener('DOMContentLoaded', boot);
+
+  function showBootError(error) {
+    const host = document.getElementById('view');
+    if (!host) return;
+    const message = error && error.message ? error.message : String(error || 'Unknown error');
+    console.error('Inventory startup failed:', error);
+    host.innerHTML = `
+      <div class="card error-card" role="alert" style="max-width:680px;margin:24px auto;padding:22px">
+        <h2>${UI.getLang() === 'ar' ? 'تعذر تحميل البرنامج' : 'The app could not load'}</h2>
+        <p>${UI.getLang() === 'ar' ? 'حدثت مشكلة أثناء فتح قاعدة البيانات المحلية أو تحميل ملفات البرنامج.' : 'A problem occurred while opening the local database or loading app data.'}</p>
+        <p class="muted" style="overflow-wrap:anywhere">${esc(message)}</p>
+        <button type="button" class="btn btn-primary" id="boot-retry">${UI.getLang() === 'ar' ? 'إعادة المحاولة' : 'Try again'}</button>
+        <p class="muted small">${UI.getLang() === 'ar' ? 'بياناتك المحلية لم يتم حذفها. إذا استمرت المشكلة، أرسل لنا صورة هذه الرسالة.' : 'Your local data has not been deleted. If the problem continues, send a screenshot of this message.'}</p>
+      </div>`;
+    const retry = host.querySelector('#boot-retry');
+    if (retry) retry.addEventListener('click', () => location.reload());
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    let completed = false;
+    const startupTimer = setTimeout(() => {
+      if (!completed) showBootError(new Error(
+        UI.getLang() === 'ar'
+          ? 'استغرق تحميل قاعدة البيانات أكثر من 15 ثانية. أغلق أي نسخة أخرى من البرنامج ثم أعد المحاولة.'
+          : 'Database startup took longer than 15 seconds. Close other app tabs and retry.'
+      ));
+    }, 15000);
+
+    boot().then(() => {
+      completed = true;
+      clearTimeout(startupTimer);
+    }).catch((error) => {
+      completed = true;
+      clearTimeout(startupTimer);
+      showBootError(error);
+    });
+  });
 })(window);
