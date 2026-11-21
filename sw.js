@@ -6,7 +6,7 @@
    ========================================================================= */
 'use strict';
 
-const CACHE = 'inv-pwa-v5';
+const CACHE = 'inv-pwa-v6';
 
 const PRECACHE = [
   './',
