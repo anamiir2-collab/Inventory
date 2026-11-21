@@ -1,14 +1,19 @@
 /* =========================================================================
    inventory.js — رصيد المخزن (بحث/فلترة/ترتيب) + إدارة الأصناف + تفاصيل الصنف
+   Two product families (تست لينر معالج / توب لاينر) — see App.productFamily.
+   Zero-balance items are hidden by design in both views.
    ========================================================================= */
 (function (global) {
   'use strict';
   const { t, el, esc, fmtNum, toast, confirmDialog, openModal, closeModal } = global.UI;
   const App = global.App;
   const lang = () => global.UI.getLang() === 'ar';
+  const familyOf = (name) => App.productFamily(name);
+  const CANON = ['تست لينر معالج', 'توب لاينر'];
 
   /* ================= Inventory view ================= */
   function renderInventory(host) {
+    const families = CANON.filter((f) => App.state.products.some((p) => familyOf(p.quality) === f));
     host.innerHTML = `
       <div class="page-head"><h2>${esc(t('inventory'))}</h2>
         <div class="head-actions">
@@ -16,6 +21,8 @@
         </div></div>
       <div class="card filters">
         <input type="text" id="inv-search" placeholder="${lang() ? 'بحث باسم الصنف…' : 'Search product…'}">
+        <select id="inv-family"><option value="">${lang() ? 'الصنف: الكل' : 'Product: all'}</option>
+          ${families.map((f) => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}</select>
         <select id="inv-gsm"><option value="">${t('gsm')}: ${t('all')}</option></select>
         <select id="inv-size"><option value="">${t('size')}: ${t('all')}</option></select>
         <select id="inv-sort">
@@ -36,6 +43,7 @@
 
     function draw() {
       const q = host.querySelector('#inv-search').value.trim().toLowerCase();
+      const fam = host.querySelector('#inv-family').value;
       const g = host.querySelector('#inv-gsm').value;
       const s = host.querySelector('#inv-size').value;
       const sort = host.querySelector('#inv-sort').value;
@@ -44,17 +52,19 @@
       let rows = App.state.products.map((p) => {
         const b = App.state.balances.get(p.combo);
         const net = b ? b.net : 0;
-        return Object.assign({}, p, {
-          net,
-          weight: global.CALC.productWeight(p.size, net, wf),
-        });
+        return Object.assign({}, p, { family: familyOf(p.quality), net, weight: global.CALC.productWeight(p.size, net, wf) });
       });
-      if (q) rows = rows.filter((r) => r.quality.toLowerCase().includes(q));
+      if (q) rows = rows.filter((r) => r.quality.toLowerCase().includes(q) || r.family.toLowerCase().includes(q));
+      if (fam) rows = rows.filter((r) => r.family === fam);
       if (g) rows = rows.filter((r) => String(r.gsm) === g);
       if (s) rows = rows.filter((r) => String(r.size) === s);
-      rows = rows.filter((r) => r.net !== 0);
+      rows = rows.filter((r) => r.net !== 0); /* zero-balance items stay hidden */
       const cmp = {
-        name: (a, b) => a.quality.localeCompare(b.quality, 'ar') || a.gsm - b.gsm || a.size - b.size,
+        name: (a, b) => {
+          const ia = CANON.indexOf(a.family), ib = CANON.indexOf(b.family);
+          const oa = ia < 0 ? CANON.length : ia, ob = ib < 0 ? CANON.length : ib;
+          return oa - ob || Number(a.gsm) - Number(b.gsm) || Number(a.size) - Number(b.size);
+        },
         'bal-desc': (a, b) => b.net - a.net,
         'bal-asc': (a, b) => a.net - b.net,
         'weight-desc': (a, b) => b.weight - a.weight,
@@ -71,7 +81,7 @@
             <th class="num">${t('balance')}</th><th class="num">${t('weight')} (${t('kg')})</th>
             <th>${lang() ? 'المصدر' : 'Source'}</th><th>${t('actions')}</th>
           </tr></thead>
-          <tbody>${rows.length ? rows.map(rowHtml).join('') : `<tr><td colspan="7" class="empty">${esc(t('emptyState'))}</td></tr>`}</tbody>
+          <tbody>${rows.length ? rows.map(rowHtml).join('') : `<tr><td colspan="7" class="empty">${lang() ? 'لا توجد أصناف برصيد مطابقة للبحث' : 'no items match'}</td></tr>`}</tbody>
           <tfoot><tr>
             <td colspan="3">${t('total')} (${fmtNum(rows.length)} ${lang() ? 'صنف' : 'items'})</td>
             <td class="num">${fmtNum(totNet)}</td><td class="num">${fmtNum(totW, 2)}</td>
@@ -83,12 +93,12 @@
     }
 
     function rowHtml(p) {
-      const zero = p.net === 0, negative = p.net < 0;
-      const cls = negative ? 'bal-neg' : zero ? 'bal-zero' : 'bal-pos';
+      const negative = p.net < 0;
+      const cls = negative ? 'bal-neg' : p.net === 0 ? 'bal-zero' : 'bal-pos';
       const src = p.source === 'excel' ? (lang() ? 'ملف الإكسل' : 'Excel')
         : p.source === 'discovered' ? (lang() ? 'من الحركات' : 'from transactions') : (lang() ? 'يدوي' : 'manual');
-      return `<tr class="${negative ? 'tr-neg' : zero ? 'tr-zero' : ''}">
-        <td data-label="${t('quality')}">${esc(p.quality)}</td>
+      return `<tr class="${negative ? 'tr-neg' : ''}">
+        <td data-label="${t('quality')}">${esc(p.family)}</td>
         <td data-label="${t('gsm')}">${fmtNum(p.gsm)}</td>
         <td data-label="${t('size')}">${fmtNum(p.size)}</td>
         <td data-label="${t('balance')}"><span class="badge ${cls}">${fmtNum(p.net)}</span></td>
@@ -114,7 +124,7 @@
       const hidden = Math.max(0, rowsHtml.length - MAX_RENDER);
       const shown = hidden ? rowsHtml.slice(-MAX_RENDER) : rowsHtml;
       const rowsStr = shown.map(({ r, run: runv }) => `<tr>
-          <td>${global.UI.fmtDate(r.date)}</td><td>${esc(r.customer || '')}</td>
+          <td>${global.UI.fmtDate(r.date)}</td><td>${esc(App.canonicalCustomer(r.customer) || '')}</td>
           <td>${esc(r.permitNo || '')}</td>
           <td class="num pos">${r.addQty ? fmtNum(r.addQty) : ''}</td>
           <td class="num neg">${r.outQty ? fmtNum(r.outQty) : ''}</td>
@@ -145,11 +155,13 @@
     }
 
     host.querySelector('#inv-search').addEventListener('input', draw);
+    host.querySelector('#inv-family').addEventListener('change', draw);
     host.querySelector('#inv-gsm').addEventListener('change', draw);
     host.querySelector('#inv-size').addEventListener('change', draw);
     host.querySelector('#inv-sort').addEventListener('change', draw);
     host.querySelector('#inv-clear').addEventListener('click', () => {
       host.querySelector('#inv-search').value = '';
+      host.querySelector('#inv-family').value = '';
       host.querySelector('#inv-gsm').value = '';
       host.querySelector('#inv-size').value = '';
       draw();
@@ -165,32 +177,29 @@
   function renderProducts(host) {
     host.innerHTML = `
       <div class="page-head"><h2>${esc(t('products'))}</h2>
-        <div class="head-actions"><button class="btn btn-primary" id="pr-add">+ ${lang() ? 'صنف جديد' : 'New product'}</button></div></div>
+        <div class="head-actions">
+          <label class="chk"><input type="checkbox" id="pr-all"> ${lang() ? 'إظهار كل المقاسات (حتى الرصيد الصفر)' : 'show all sizes (incl. zero)'}</label>
+          <button class="btn btn-primary" id="pr-add">+ ${lang() ? 'مقاس جديد' : 'New size'}</button>
+        </div></div>
       <div class="card table-wrap"><table class="data-table">
         <thead><tr><th>${t('quality')}</th><th>${t('gsm')}</th><th>${t('size')}</th>
           <th class="num">${t('balance')}</th><th>${lang() ? 'المصدر' : 'Source'}</th><th>${t('actions')}</th></tr></thead>
         <tbody id="pr-rows"></tbody></table></div>`;
 
     function draw() {
-      const familyOf = (name) => {
-        const value = String(name || '').replace(/[\\s\\u0640]+/g, ' ').trim().toLowerCase();
-        if (value.includes('تست') && value.includes('لينر') && value.includes('معالج')) return 'تست لينر معالج';
-        if (value.includes('توب') && value.includes('لاينر')) return 'توب لاينر';
-        // Keep any legacy/unclassified product visible instead of dropping it.
-        return String(name || '').trim();
-      };
-      const familyOrder = ['تست لينر معالج', 'توب لاينر'];
+      const showAll = host.querySelector('#pr-all').checked;
       const rows = App.state.products.filter((p) => {
+        if (showAll) return true;
         const balance = App.state.balances.get(p.combo);
         return balance && Number(balance.net) !== 0;
       }).slice().sort((a, b) => {
         const fa = familyOf(a.quality), fb = familyOf(b.quality);
-        const ia = familyOrder.indexOf(fa), ib = familyOrder.indexOf(fb);
-        const oa = ia < 0 ? familyOrder.length : ia, ob = ib < 0 ? familyOrder.length : ib;
+        const ia = CANON.indexOf(fa), ib = CANON.indexOf(fb);
+        const oa = ia < 0 ? CANON.length : ia, ob = ib < 0 ? CANON.length : ib;
         return oa - ob || fa.localeCompare(fb, 'ar') || Number(a.gsm) - Number(b.gsm) || Number(a.size) - Number(b.size);
       });
       const shownFamilies = new Set();
-      host.querySelector('#pr-rows').innerHTML = rows.map((p) => {
+      host.querySelector('#pr-rows').innerHTML = rows.length ? rows.map((p) => {
         const b = App.state.balances.get(p.combo);
         const family = familyOf(p.quality);
         const showFamily = !shownFamilies.has(family);
@@ -200,12 +209,12 @@
           <td data-label="${t('gsm')}">${fmtNum(p.gsm)}</td>
           <td data-label="${t('size')}">${fmtNum(p.size)}</td>
           <td data-label="${t('balance')}" class="num">${fmtNum(b ? b.net : 0)}</td>
-          <td>${esc(p.source || '')}</td>
+          <td data-label="${lang() ? 'المصدر' : 'Source'}">${esc(p.source || '')}</td>
           <td class="actions-cell">
             <button class="icon-btn" data-edit="${p.id}" title="${t('edit')}">✎</button>
             <button class="icon-btn danger" data-del="${p.id}" title="${t('del')}">🗑</button>
           </td></tr>`;
-      }).join('');
+      }).join('') : `<tr><td colspan="6" class="empty">${lang() ? 'لا توجد أصناف برصيد — فعّل الإظهار الكل' : 'no items with stock'}</td></tr>`;
       host.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => editProduct(Number(b.dataset.edit))));
       host.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
         const p = App.state.products.find((x) => x.id === Number(b.dataset.del));
@@ -228,8 +237,11 @@
     function editProduct(id) {
       const p = App.state.products.find((x) => x.id === id);
       const isNew = !p;
+      const currentFamily = p ? familyOf(p.quality) : '';
+      const options = [...new Set(CANON.concat(currentFamily && CANON.indexOf(currentFamily) < 0 ? [currentFamily] : []))];
       const node = el(`<div class="edit-prod">
-        <label class="field"><span>${t('quality')} *</span><input id="p-q" type="text" value="${esc(p ? p.quality : '')}"></label>
+        <label class="field"><span>${t('quality')} *</span>
+          <select id="p-q">${options.map((o) => `<option ${p && o === p.quality ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>
         <label class="field"><span>${t('gsm')} *</span><input id="p-g" type="number" step="any" value="${esc(p && p.gsm != null ? p.gsm : '')}"></label>
         <label class="field"><span>${t('size')} *</span><input id="p-s" type="number" step="any" value="${esc(p && p.size != null ? p.size : '')}"></label>
         <div class="form-error" id="p-err"></div>
@@ -237,7 +249,7 @@
           <button class="btn btn-primary" id="p-save">${t('save')}</button>
           <button class="btn btn-ghost" id="p-cancel">${t('cancel')}</button>
         </div></div>`);
-      openModal(node, { title: isNew ? (lang() ? 'صنف جديد' : 'New product') : (lang() ? 'تعديل صنف' : 'Edit product') });
+      openModal(node, { title: isNew ? (lang() ? 'مقاس جديد' : 'New size') : (lang() ? 'تعديل صنف' : 'Edit product') });
       node.querySelector('#p-cancel').addEventListener('click', closeModal);
       node.querySelector('#p-save').addEventListener('click', async () => {
         const q = node.querySelector('#p-q').value.trim();
@@ -263,6 +275,7 @@
     }
 
     host.querySelector('#pr-add').addEventListener('click', () => editProduct(null));
+    host.querySelector('#pr-all').addEventListener('change', draw);
     draw();
   }
 

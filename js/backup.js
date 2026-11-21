@@ -187,7 +187,7 @@
       const box = host.querySelector('#bk-audit');
       box.innerHTML = rows.length ? rows.map((r) => {
         const act = { add: '➕', edit: '✎', delete: '🗑', import: '📥', 'import-replace': '♻️', restore: '♻️', backup: '💾' }[r.action] || '•';
-        const entity = { transaction: lang() ? 'حركة' : 'tx', product: lang() ? 'صنف' : 'product', database: lang() ? 'قاعدة البيانات' : 'database' }[r.entity] || r.entity;
+        const entity = { transaction: lang() ? 'حركة' : 'tx', movement: lang() ? 'حركة مجمعة' : 'movement', product: lang() ? 'صنف' : 'product', database: lang() ? 'قاعدة البيانات' : 'database' }[r.entity] || r.entity;
         return `<div class="audit-row">${act} ${esc(entity)} — ${esc(r.action)} — ${new Date(r.at).toLocaleString('ar-EG')} ${r.details ? `<span class="muted">${esc(r.details)}</span>` : ''}</div>`;
       }).join('') : `<div class="muted">${lang() ? 'لا توجد عمليات بعد' : 'no operations yet'}</div>`;
     });

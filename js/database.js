@@ -14,14 +14,43 @@
   'use strict';
 
   const DB_NAME = 'inventory_pwa_db';
-  const DB_VERSION = 1;
+  const DB_VERSION = 1; /* never bumped lightly: any change here MUST stay
+     backward-compatible with existing user databases (see README). */
 
   let _db = null;
+  let _openPromise = null;
+
+  /* Typed error so the boot screen can tell the user exactly what to do. */
+  function dbError(kind, message, cause) {
+    const e = new Error(message);
+    e.name = 'DBError';
+    e.kind = kind; /* 'blocked' | 'timeout' | 'unavailable' | 'io' */
+    e.cause = cause;
+    return e;
+  }
 
   function open() {
+    /* one shared open attempt: concurrent callers wait on the same promise */
     if (_db) return Promise.resolve(_db);
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
+    if (_openPromise) return _openPromise;
+    _openPromise = new Promise((resolve, reject) => {
+      let req;
+      try {
+        if (typeof indexedDB === 'undefined') {
+          throw dbError('unavailable', 'IndexedDB غير متاح في هذا المتصفح / IndexedDB is not available here');
+        }
+        req = indexedDB.open(DB_NAME, DB_VERSION);
+      } catch (err) {
+        _openPromise = null;
+        reject(dbError('unavailable', 'IndexedDB غير متاح / IndexedDB is not available', err));
+        return;
+      }
+      /* If another tab holds an older connection, the open request would
+         hang forever without onblocked — one of the real causes of the
+         endless "جاري التحميل" state. */
+      req.onblocked = () => {
+        console.warn('[db] open blocked — another tab holds the database');
+      };
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('products')) {
@@ -46,9 +75,28 @@
           db.createObjectStore('settings', { keyPath: 'key' });
         }
       };
-      req.onsuccess = () => { _db = req.result; resolve(_db); };
-      req.onerror = () => reject(req.error);
+      req.onsuccess = () => {
+        _db = req.result;
+        _db.onversionchange = () => { /* another tab upgraded: release ours */
+          try { _db.close(); } catch (e2) { /* ignore */ }
+          _db = null; _openPromise = null;
+        };
+        resolve(_db);
+      };
+      req.onerror = () => {
+        _openPromise = null;
+        reject(dbError('io', 'فشل فتح قاعدة البيانات المحلية / Failed to open the local database', req.error));
+      };
+      /* hard timeout: never leave the app on the loading screen forever */
+      setTimeout(() => {
+        if (_db) return;
+        try { req.cancel && req.cancel(); } catch (e3) { /* no-op */ }
+        _openPromise = null;
+        reject(dbError('timeout',
+          'استغرق فتح قاعدة البيانات أكثر من 10 ثوانٍ. أغلق أي تبويبات أخرى للتطبيق ثم أعد المحاولة / Database open timed out — close other app tabs and retry'));
+      }, 10000);
     });
+    return _openPromise;
   }
 
   function tx(store, mode, fn) {

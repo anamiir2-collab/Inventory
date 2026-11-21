@@ -2,12 +2,15 @@
    reports.js — التقارير والطباعة
    7 report types · A4 pagination with real page numbers · repeated table
    headers on every page · signature spaces · window.print() · Excel export
+   Zero values are hidden in report rows; product families show once.
    ========================================================================= */
 (function (global) {
   'use strict';
   const { t, el, esc, fmtNum, fmtDate, toast } = global.UI;
   const App = global.App;
   const lang = () => global.UI.getLang() === 'ar';
+  const familyOf = (name) => App.productFamily(name);
+  const CANON = ['تست لينر معالج', 'توب لاينر'];
 
   const REPORTS = [
     { id: 'balance', icon: '📊', name: 'تقرير الرصيد الحالي', en: 'Current balance report' },
@@ -36,7 +39,7 @@
       <div id="print-root"></div>`;
 
     let current = 'balance';
-    let lastModel = null; // { headers, rows, totals, title, subtitle, opening/closing... }
+    let lastModel = null; // { headers, rows, totals, title, subtitle, openingClosing, summary }
 
     host.querySelectorAll('.report-card').forEach((b) => b.addEventListener('click', () => {
       current = b.dataset.report;
@@ -47,8 +50,15 @@
 
     /* ---------- filters per report ---------- */
     function buildFilters() {
-      const products = [...new Set(App.state.products.map((p) => p.quality))].sort((a, b) => a.localeCompare(b, 'ar'));
-      const customers = [...new Set(App.state.transactions.map((x) => x.customer).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
+      const families = CANON.filter((f) => App.state.products.some((p) => familyOf(p.quality) === f));
+      const seen = new Map();
+      for (const r of App.state.transactions) {
+        const raw = String(r.customer || '').trim();
+        if (!raw) continue;
+        const key = App.canonicalCustomer(raw);
+        if (key && key !== 'الإنتاج' && !seen.has(key)) seen.set(key, key);
+      }
+      const customers = [...seen.keys()].sort((a, b) => a.localeCompare(b, 'ar'));
       const needs = {
         balance: ['product', 'gsm', 'size'],
         additions: ['from', 'to', 'product', 'gsm', 'size', 'customer'],
@@ -64,18 +74,21 @@
       if (needs.includes('from')) add(`<label class="fl"><span>${t('from')}</span><input type="date" id="rf-from"></label>`);
       if (needs.includes('to')) add(`<label class="fl"><span>${t('to')}</span><input type="date" id="rf-to"></label>`);
       if (needs.includes('product') || needs.includes('productCombo'))
-        add(`<label class="fl"><span>${t('quality')}</span><select id="rf-product"><option value="">${lang() ? '— اختر الصنف —' : '— select —'}</option>${products.map((p) => `<option>${esc(p)}</option>`).join('')}</select></label>`);
+        add(`<label class="fl"><span>${t('quality')}</span><select id="rf-product"><option value="">${lang() ? '— اختر الصنف —' : '— select —'}</option>${families.map((p) => `<option>${esc(p)}</option>`).join('')}</select></label>`);
       if (needs.includes('productCombo')) {
         add(`<label class="fl"><span>${t('gsm')}</span><select id="rf-pgsm"><option value="">—</option></select></label>`);
         add(`<label class="fl"><span>${t('size')}</span><select id="rf-psize"><option value="">—</option></select></label>`);
         F.querySelector('#rf-product').addEventListener('change', () => {
-          const combos = App.state.products.filter((p) => p.quality === F.querySelector('#rf-product').value);
-          F.querySelector('#rf-pgsm').innerHTML = `<option value="">—</option>` + [...new Set(combos.map((c) => String(c.gsm)))].map((g) => `<option>${esc(g)}</option>`).join('');
+          const fam = F.querySelector('#rf-product').value;
+          const combos = App.state.products.filter((p) => familyOf(p.quality) === fam);
+          F.querySelector('#rf-pgsm').innerHTML = `<option value="">—</option>` + [...new Set(combos.map((c) => String(c.gsm)))].sort((a, b) => Number(a) - Number(b)).map((g) => `<option>${esc(g)}</option>`).join('');
           F.querySelector('#rf-psize').innerHTML = `<option value="">—</option>`;
         });
         F.querySelector('#rf-pgsm').addEventListener('change', () => {
-          const combos = App.state.products.filter((p) => p.quality === F.querySelector('#rf-product').value && String(p.gsm) === F.querySelector('#rf-pgsm').value);
-          F.querySelector('#rf-psize').innerHTML = `<option value="">—</option>` + [...new Set(combos.map((c) => String(c.size)))].map((s) => `<option>${esc(s)}</option>`).join('');
+          const fam = F.querySelector('#rf-product').value;
+          const g2 = F.querySelector('#rf-pgsm').value;
+          const combos = App.state.products.filter((p) => familyOf(p.quality) === fam && String(p.gsm) === g2);
+          F.querySelector('#rf-psize').innerHTML = `<option value="">—</option>` + [...new Set(combos.map((c) => String(c.size)))].sort((a, b) => Number(a) - Number(b)).map((s) => `<option>${esc(s)}</option>`).join('');
         });
       }
       if (needs.includes('gsm') && !needs.includes('productCombo')) {
@@ -102,13 +115,15 @@
     function build() {
       const wf = App.state.settings.weightFactor;
       const from = val('rf-from'), to = val('rf-to');
-      const product = val('rf-product') || val('rf-product') || '';
+      const product = val('rf-product');
       const gsm = val('rf-gsm') || val('rf-pgsm') || '';
       const size = val('rf-size') || val('rf-psize') || '';
       const customer = val('rf-customer');
       const type = val('rf-type');
 
-      const filterCombo = (r) => (!product || r.quality === product) && (!gsm || String(r.gsm) === gsm) && (!size || String(r.size) === size);
+      const filterCombo = (r) => (!product || familyOf(r.quality) === product)
+        && (!gsm || String(r.gsm) === gsm) && (!size || String(r.size) === size);
+      const filterCustomer = (r) => !customer || App.canonicalCustomer(r.customer) === customer;
       const filterPeriod = (r) => (!from || r.date >= from) && (!to || r.date <= to);
 
       let model = null;
@@ -116,21 +131,14 @@
       const title = lang() ? rep.name : rep.en;
 
       if (current === 'balance' || current === 'stocktake') {
-        const familyOf = (name) => {
-          const value = String(name || '').replace(/[\\s\\u0640]+/g, ' ').trim().toLowerCase();
-          if (value.includes('تست') && value.includes('لينر') && value.includes('معالج')) return 'تست لينر معالج';
-          if (value.includes('توب') && value.includes('لاينر')) return 'توب لاينر';
-          return String(name || '').trim();
-        };
-        const familyOrder = ['تست لينر معالج', 'توب لاينر'];
         let rows = App.state.products.map((p) => {
           const b = App.state.balances.get(p.combo);
           const net = b ? b.net : 0;
           return { quality: p.quality, family: familyOf(p.quality), gsm: p.gsm, size: p.size, net, weight: global.CALC.productWeight(p.size, net, wf), combo: p.combo };
         }).filter(filterCombo).filter((r) => r.net !== 0);
         rows.sort((a, b) => {
-          const ia = familyOrder.indexOf(a.family), ib = familyOrder.indexOf(b.family);
-          const oa = ia < 0 ? familyOrder.length : ia, ob = ib < 0 ? familyOrder.length : ib;
+          const ia = CANON.indexOf(a.family), ib = CANON.indexOf(b.family);
+          const oa = ia < 0 ? CANON.length : ia, ob = ib < 0 ? CANON.length : ib;
           return oa - ob || a.family.localeCompare(b.family, 'ar') || Number(a.gsm) - Number(b.gsm) || Number(a.size) - Number(b.size);
         });
         const totals = {
@@ -141,7 +149,7 @@
           title,
           subtitle: [fmtSubtitle()],
           headers: [t('quality'), t('gsm'), t('size'), t('balance'), t('weight') + ' (' + t('kg') + ')'],
-          // Show each main product name once per consecutive group; list only its available GSM/size variants below it.
+          // Show each main product name once per consecutive group; list only its variants below it.
           rows: rows.map((r, index) => [
             index === 0 || rows[index - 1].family !== r.family ? r.family : '',
             fmtNum(r.gsm), fmtNum(r.size), fmtNum(r.net), fmtNum(r.weight, 3),
@@ -155,8 +163,7 @@
       } else if (current === 'additions' || current === 'withdrawals') {
         const isAdd = current === 'additions';
         let rows = App.state.transactions.filter((r) => (isAdd ? (Number(r.addQty) || 0) > 0 : (Number(r.outQty) || 0) > 0))
-          .filter(filterCombo).filter(filterPeriod);
-        if (customer) rows = rows.filter((r) => r.customer === customer);
+          .filter(filterCombo).filter(filterPeriod).filter(filterCustomer);
         rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.id || 0) - (b.id || 0)));
         const qtySum = global.CALC.round6(rows.reduce((s, r) => s + (isAdd ? (Number(r.addQty) || 0) : (Number(r.outQty) || 0)), 0));
         const wSum = global.CALC.round6(rows.reduce((s, r) => s + (Number(r.weight) || 0), 0));
@@ -164,15 +171,16 @@
           title,
           subtitle: [fmtSubtitle(), `${t('from')}: ${from ? fmtDate(from) : '—'}   ${t('to')}: ${to ? fmtDate(to) : '—'}`],
           headers: [t('date'), t('permit'), t('quality'), t('gsm'), t('size'), t('customer'), isAdd ? t('addQty') : t('outQty'), `${t('weight')} (${t('kg')})`],
-          rows: rows.map((r) => [fmtDate(r.date), r.permitNo || '', r.quality, fmtNum(r.gsm), fmtNum(r.size), r.customer || '',
+          rows: rows.map((r) => [fmtDate(r.date), r.permitNo || '', familyOf(r.quality), fmtNum(r.gsm), fmtNum(r.size), App.canonicalCustomer(r.customer) || '',
             fmtNum(isAdd ? r.addQty : r.outQty), r.weight != null ? fmtNum(r.weight, 3) : '']),
           totalsRow: [lang() ? 'الإجمالي' : 'Total', `${fmtNum(rows.length)} ${lang() ? 'حركة' : 'rows'}`, '', '', '', '', fmtNum(qtySum), fmtNum(wSum, 3)],
         };
       } else if (current === 'product') {
         const q = val('rf-product'), g = val('rf-pgsm'), s = val('rf-psize');
         if (!q || g === '' || s === '') {
-          global.UI.toast(lang() ? 'اختر الصنف والجرام والمقاس أولًا' : 'Select product, GSM and size first', 'warn');
+          toast(lang() ? 'اختر الصنف والجرام والمقاس أولًا' : 'Select product, GSM and size first', 'warn');
           host.querySelector('#print-root').innerHTML = '';
+          lastModel = null;
           return;
         }
         const comboTx = App.state.transactions
@@ -188,7 +196,7 @@
         for (const r of comboTx) {
           if (!filterPeriod(r)) continue;
           run += (Number(r.addQty) || 0) - (Number(r.outQty) || 0);
-          rows.push([fmtDate(r.date), r.customer || '', r.permitNo || '', r.addQty ? fmtNum(r.addQty) : '', r.outQty ? fmtNum(r.outQty) : '', fmtNum(global.CALC.round6(run)), r.settlement || '']);
+          rows.push([fmtDate(r.date), App.canonicalCustomer(r.customer) || '', r.permitNo || '', r.addQty ? fmtNum(r.addQty) : '', r.outQty ? fmtNum(r.outQty) : '', fmtNum(global.CALC.round6(run)), r.settlement || '']);
         }
         const inPeriodAdd = comboTx.filter(filterPeriod).reduce((s2, r) => s2 + (Number(r.addQty) || 0), 0);
         const inPeriodOut = comboTx.filter(filterPeriod).reduce((s2, r) => s2 + (Number(r.outQty) || 0), 0);
@@ -210,8 +218,8 @@
         };
       } else if (current === 'customer') {
         const c = val('rf-customer');
-        if (!c) { toast(lang() ? 'اختر العميل أولًا' : 'Select a customer first', 'warn'); host.querySelector('#print-root').innerHTML = ''; return; }
-        let rows = App.state.transactions.filter((r) => r.customer === c).filter(filterCombo).filter(filterPeriod);
+        if (!c) { toast(lang() ? 'اختر العميل أولًا' : 'Select a customer first', 'warn'); host.querySelector('#print-root').innerHTML = ''; lastModel = null; return; }
+        let rows = App.state.transactions.filter(filterCustomer).filter(filterCombo).filter(filterPeriod);
         rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.id || 0) - (b.id || 0)));
         const addSum = global.CALC.round6(rows.reduce((s, r) => s + (Number(r.addQty) || 0), 0));
         const outSum = global.CALC.round6(rows.reduce((s, r) => s + (Number(r.outQty) || 0), 0));
@@ -219,7 +227,7 @@
           title,
           subtitle: [`${t('customer')}: ${c}`, fmtSubtitle(), `${t('from')}: ${from ? fmtDate(from) : '—'}   ${t('to')}: ${to ? fmtDate(to) : '—'}`],
           headers: [t('date'), t('quality'), t('gsm'), t('size'), t('permit'), t('addQty'), t('outQty'), t('settlement')],
-          rows: rows.map((r) => [fmtDate(r.date), r.quality, fmtNum(r.gsm), fmtNum(r.size), r.permitNo || '', r.addQty ? fmtNum(r.addQty) : '', r.outQty ? fmtNum(r.outQty) : '', r.settlement || '']),
+          rows: rows.map((r) => [fmtDate(r.date), familyOf(r.quality), fmtNum(r.gsm), fmtNum(r.size), r.permitNo || '', r.addQty ? fmtNum(r.addQty) : '', r.outQty ? fmtNum(r.outQty) : '', r.settlement || '']),
           totalsRow: [lang() ? 'الإجمالي' : 'Total', `${fmtNum(rows.length)} ${lang() ? 'حركة' : 'rows'}`, '', '', '', fmtNum(addSum), fmtNum(outSum), ''],
           summary: [
             `${t('totalAdd')}: ${fmtNum(addSum)}`,
@@ -228,8 +236,7 @@
           ],
         };
       } else if (current === 'period') {
-        let rows = App.state.transactions.filter(filterPeriod).filter(filterCombo);
-        if (customer) rows = rows.filter((r) => r.customer === customer);
+        let rows = App.state.transactions.filter(filterPeriod).filter(filterCombo).filter(filterCustomer);
         if (type) rows = rows.filter((r) => (type === 'add' ? (Number(r.addQty) || 0) > 0 : (Number(r.outQty) || 0) > 0));
         rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.id || 0) - (b.id || 0)));
         const addSum = global.CALC.round6(rows.reduce((s, r) => s + (Number(r.addQty) || 0), 0));
@@ -243,44 +250,31 @@
             `${lang() ? 'صافي الحركة خلال الفترة' : 'Net movement in period'}: ${fmtNum(global.CALC.round6(addSum - outSum))}`,
           ],
           headers: [t('date'), t('type'), t('quality'), t('gsm'), t('size'), t('customer'), t('permit'), t('addQty'), t('outQty'), t('settlement')],
-          rows: rows.map((r) => [fmtDate(r.date), (Number(r.addQty) || 0) > 0 ? t('add') : t('out'), r.quality, fmtNum(r.gsm), fmtNum(r.size), r.customer || '', r.permitNo || '', r.addQty ? fmtNum(r.addQty) : '', r.outQty ? fmtNum(r.outQty) : '', r.settlement || '']),
+          rows: rows.map((r) => [fmtDate(r.date), (Number(r.addQty) || 0) > 0 ? t('add') : t('out'), familyOf(r.quality), fmtNum(r.gsm), fmtNum(r.size), App.canonicalCustomer(r.customer) || '', r.permitNo || '', r.addQty ? fmtNum(r.addQty) : '', r.outQty ? fmtNum(r.outQty) : '', r.settlement || '']),
           totalsRow: [lang() ? 'الإجمالي' : 'Total', `${fmtNum(rows.length)} ${lang() ? 'حركة' : 'rows'}`, '', '', '', '', '', fmtNum(addSum), fmtNum(outSum), ''],
         };
       }
 
       // Hide zero values consistently in every report view and Excel export.
-      // Keep text labels and non-zero values; blank only cells that represent numeric zero.
+      // Keep text labels and non-zero values; blank only cells that are numeric zero.
       const isZeroDisplay = (value) => {
         if (typeof value === 'number') return Number.isFinite(value) && value === 0;
         if (typeof value !== 'string') return false;
         const normalized = value.trim().replace(/,/g, '');
-        return normalized !== '' && /^[-+]?0+(?:\\.0+)?$/.test(normalized);
+        return normalized !== '' && /^[-+]?0+(?:\.0+)?$/.test(normalized);
       };
       const hideZeroCells = (row) => Array.isArray(row)
-        ? row.map((cell) => isZeroDisplay(cell) ? '' : cell)
+        ? row.map((cell) => (isZeroDisplay(cell) ? '' : cell))
         : row;
+      const summaryHasNonZero = (line) => {
+        const numbers = String(line).match(/[-+]?\d[\d,]*(?:\.\d+)?/g) || [];
+        return numbers.length === 0 || numbers.some((part) => Number(part.replace(/,/g, '')) !== 0);
+      };
       if (model) {
         model.rows = (model.rows || []).map(hideZeroCells);
         if (model.totalsRow) model.totalsRow = hideZeroCells(model.totalsRow);
-        // Remove summary statements whose reported numeric values are all zero.
-        if (Array.isArray(model.summary)) {
-          model.summary = model.summary.filter((line) => {
-            const values = String(line).match(/(?:[:：]\\s*)([-+]?\\d[\\d,]*(?:\\.\\d+)?)/g) || [];
-            return values.length === 0 || values.some((part) => {
-              const number = Number(part.replace(/^.*[:：]\\s*/, '').replace(/,/g, ''));
-              return Number.isFinite(number) && number !== 0;
-            });
-          });
-        }
-        if (Array.isArray(model.openingClosing)) {
-          model.openingClosing = model.openingClosing.filter((line) => {
-            const match = String(line).match(/[:：]\\s*([-+]?\\d[\\d,]*(?:\\.\\d+)?)/);
-            return !match || Number(match[1].replace(/,/g, '')) !== 0;
-          });
-        }
-      }
-      if (model && Array.isArray(model.summary)) {
-        model.summary = model.summary.filter((line) => !/(?:^|[:：])\s*(?:0+(?:[.,]0+)?)(?:\s|$)/.test(String(line)));
+        if (Array.isArray(model.summary)) model.summary = model.summary.filter(summaryHasNonZero);
+        if (Array.isArray(model.openingClosing)) model.openingClosing = model.openingClosing.filter(summaryHasNonZero);
       }
       lastModel = model;
       if (model) renderPreview(model);
@@ -294,10 +288,9 @@
     /* ---------- A4 pagination & preview ---------- */
     function renderPreview(model) {
       const root = host.querySelector('#print-root');
+      if (!root) return;
       root.innerHTML = '';
-      const pages = paginate(model);
-      pages.forEach((p, i) => root.appendChild(p));
-      /* page counter annotation for screen */
+      paginate(model).forEach((p) => root.appendChild(p));
     }
 
     function paginate(model) {
@@ -309,7 +302,6 @@
         openingClosing: model.openingClosing || null,
         headers: model.headers,
         totalsRow: model.totalsRow || null,
-        totalPages: 0,
       };
       /* measure a sample of rows in a fixed-height probe page:
          .rp-content clientHeight = real per-page space for rows */
@@ -343,7 +335,7 @@
     }
 
     function buildPage(meta, rows, pageNo, total) {
-      const page = el(`<div class="print-page">
+      return el(`<div class="print-page">
         <div class="rp-head">
           <div class="rp-co">${esc(meta.company)}</div>
           <div class="rp-title">${esc(meta.title)}</div>
@@ -368,7 +360,6 @@
           </div>
         </div>
       </div>`);
-      return page;
     }
 
     /* print & export */

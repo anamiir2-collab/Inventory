@@ -68,6 +68,8 @@
       weight: t.weight === '' || t.weight === null || t.weight === undefined ? null : (Number(t.weight) || null),
       settlement: cleanStr(t.settlement),
       notes: cleanStr(t.notes),
+      /* optional movement-group id: children of one multi-size movement share it */
+      groupId: cleanStr(t.groupId) || null,
       source: t.source || 'manual',
       excelRow: t.excelRow ?? null,
       fingerprint: fingerprint(t),
@@ -125,7 +127,108 @@
     return updateTransaction(id, { settlement: v });
   }
 
-  global.TX = { fingerprint, validate, addTransaction, updateTransaction, deleteTransaction, setSettlement, ensureProduct };
+  /* ---------------- movement groups (multi-size movements) ----------------
+     A movement = N child transactions sharing groupId. Replace and delete
+     run inside ONE IndexedDB transaction (all work happens inside the
+     getAll success handler, so the transaction can never auto-commit early
+     or leave a movement half-updated). */
+
+  function normalizeRow(t) {
+    return {
+      date: cleanStr(t.date),
+      quality: cleanStr(t.quality),
+      gsm: toNumberOrRaw(t.gsm),
+      size: toNumberOrRaw(t.size),
+      customer: cleanStr(t.customer),
+      permitNo: cleanStr(t.permitNo),
+      addQty: round6(Number(t.addQty) || 0),
+      outQty: round6(Number(t.outQty) || 0),
+      weight: t.weight === '' || t.weight === null || t.weight === undefined ? null : (Number(t.weight) || null),
+      settlement: cleanStr(t.settlement),
+      notes: cleanStr(t.notes),
+      groupId: cleanStr(t.groupId) || null,
+      source: t.source || 'manual',
+      excelRow: t.excelRow ?? null,
+      fingerprint: fingerprint(t),
+      updatedAt: null,
+    };
+  }
+
+  function childRowOf(t, groupId) {
+    const r = normalizeRow(t);
+    r.groupId = groupId;
+    return r;
+  }
+
+  function replaceMovement(existingGroup, pendingRows) {
+    if (!existingGroup || !existingGroup.groupId) {
+      return Promise.reject(new Error('لا يمكن تعديل حركة قديمة بهذه الطريقة / legacy rows use the simple editor'));
+    }
+    const groupId = existingGroup.groupId;
+    const rows = pendingRows.map((t) => childRowOf(t, groupId));
+    const errors = [];
+    rows.forEach((r) => errors.push(...validate(r)));
+    if (errors.length) return Promise.reject({ type: 'validation', errors });
+    return global.DB.open().then((db) => new Promise((resolve, reject) => {
+      const t = db.transaction(['transactions', 'products', 'audit'], 'readwrite');
+      const txStore = t.objectStore('transactions');
+      let removed = 0;
+      const getAllReq = txStore.getAll();
+      getAllReq.onsuccess = () => {
+        const children = (getAllReq.result || []).filter((r) => r.groupId === groupId);
+        removed = children.length;
+        children.forEach((c) => txStore.delete(c.id));
+        rows.forEach((r) => txStore.add(r));
+        /* product master top-up for any new combo used by the movement */
+        const prodStore = t.objectStore('products');
+        rows.forEach((r) => {
+          const combo = comboKey(r.quality, r.gsm, r.size);
+          const g = prodStore.index('combo').get(combo);
+          g.onsuccess = () => {
+            if (!g.result) {
+              prodStore.add({ quality: r.quality, gsm: r.gsm, size: r.size, combo,
+                source: 'manual', createdAt: new Date().toISOString() });
+            }
+          };
+        });
+        t.objectStore('audit').add({
+          entity: 'movement', action: 'edit', entityId: null,
+          before: children, after: rows, at: new Date().toISOString(),
+        });
+      };
+      t.oncomplete = () => resolve({ removed, added: rows.length });
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error || new Error('transaction aborted'));
+    }));
+  }
+
+  function deleteMovement(group) {
+    if (group.groupId) {
+      return global.DB.open().then((db) => new Promise((resolve, reject) => {
+        const t = db.transaction(['transactions', 'audit'], 'readwrite');
+        const txStore = t.objectStore('transactions');
+        let removed = 0;
+        const getAllReq = txStore.getAll();
+        getAllReq.onsuccess = () => {
+          const children = (getAllReq.result || []).filter((r) => r.groupId === group.groupId);
+          removed = children.length;
+          children.forEach((c) => txStore.delete(c.id));
+          t.objectStore('audit').add({
+            entity: 'movement', action: 'delete', entityId: null,
+            before: children, after: null, at: new Date().toISOString(),
+          });
+        };
+        t.oncomplete = () => resolve({ removed });
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error || new Error('transaction aborted'));
+      }));
+    }
+    /* legacy single row */
+    return deleteTransaction(group.legacyId);
+  }
+
+  global.TX = { fingerprint, validate, addTransaction, updateTransaction, deleteTransaction,
+    setSettlement, ensureProduct, replaceMovement, deleteMovement };
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = global.TX;
   }

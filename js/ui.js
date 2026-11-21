@@ -112,7 +112,7 @@
 
   /* ---------------- toasts ---------------- */
   let toastHost = null;
-  function toast(msg, type) {
+  function toast(msg, type, duration) {
     if (!toastHost) {
       toastHost = el('<div id="toast-host" aria-live="polite"></div>');
       document.body.appendChild(toastHost);
@@ -120,8 +120,23 @@
     const node = el(`<div class="toast toast-${esc(type || 'info')}">${esc(msg)}</div>`);
     toastHost.appendChild(node);
     requestAnimationFrame(() => node.classList.add('show'));
-    setTimeout(() => { node.classList.remove('show'); setTimeout(() => node.remove(), 300); }, 4200);
+    setTimeout(() => { node.classList.remove('show'); setTimeout(() => node.remove(), 300); }, duration || 4200);
   }
+
+  /* ---------------- inline SVG icons (small, professional) ----------------
+     24×24 grid, stroke-based, inherit currentColor — used on stat cards
+     and section headers instead of emoji for a business-like look. */
+  const svg = (paths, sw) => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="${sw || 1.8}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  const ICON = {
+    products: svg('<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>'),
+    balance: svg('<path d="M12 3v18"/><path d="M5 7h14"/><path d="M5 7l-3 6a3.5 3.5 0 0 0 6 0L5 7z"/><path d="M19 7l-3 6a3.5 3.5 0 0 0 6 0l-3-6z"/>'),
+    add: svg('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>'),
+    out: svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>'),
+    countAdd: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h6M7 13h10M7 17h7"/>'),
+    countOut: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>'),
+    chart: svg('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
+    print: svg('<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>'),
+  };
 
   /* ---------------- modal + confirm ---------------- */
   function openModal(contentNode, opts) {
@@ -168,6 +183,6 @@
     emit(evt, data) { (listeners[evt] || []).forEach((fn) => { try { fn(data); } catch (e) { console.error(e); } }); },
   };
 
-  global.UI = { I18N, setLang, getLang, t, fmtNum, fmtDate, todayISO, el, esc, toast, openModal, closeModal, confirmDialog, EventBus };
+  global.UI = { I18N, setLang, getLang, t, fmtNum, fmtDate, todayISO, el, esc, toast, openModal, closeModal, confirmDialog, EventBus, ICON };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.UI;
 })(typeof window !== 'undefined' ? window : globalThis);

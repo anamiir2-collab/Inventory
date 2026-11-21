@@ -12,8 +12,8 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="css/style.css?v=clear-ui-20261121">
-  <link rel="stylesheet" href="css/print.css" media="print">
+  <link rel="stylesheet" href="css/style.css?v=redesign-20261122">
+  <link rel="stylesheet" href="css/print.css?v=redesign-20261122" media="print">
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -41,7 +41,7 @@
       </nav>
       <div class="side-foot">
         <div id="net-status" class="net-status"></div>
-        <div class="muted small">v1.0 — يعمل محليًا على جهازك</div>
+        <div class="muted small">v2.0 — يعمل محليًا على جهازك</div>
       </div>
     </aside>
     <div class="nav-backdrop" id="nav-backdrop"></div>
@@ -58,9 +58,12 @@
       </header>
 
       <section id="view" class="view" aria-live="polite">
-        <div class="boot-loading">
+        <!-- Loading screen: replaced by app content after boot, or by a
+             diagnostic error screen (with retry) if startup fails. -->
+        <div class="boot-loading" id="boot-loading">
           <div class="spinner"></div>
-          <p>جاري تحميل قاعدة البيانات المحلية…</p>
+          <p>جاري التحميل…</p>
+          <p class="muted small" id="boot-status">فتح قاعدة البيانات المحلية…</p>
         </div>
       </section>
 
@@ -86,14 +89,14 @@
   <script src="vendor/chart.umd.min.js"></script>
 
   <!-- application modules (order matters) -->
-  <script src="js/calculations.js"></script>
-  <script src="js/database.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/transactions.js"></script>
-  <script src="js/excel.js"></script>
-  <script src="js/app.js?v=startup-errors-20261121"></script>
-  <script src="js/inventory.js"></script>
-  <script src="js/reports.js"></script>
-  <script src="js/backup.js"></script>
+  <script src="js/calculations.js?v=redesign-20261122"></script>
+  <script src="js/database.js?v=redesign-20261122"></script>
+  <script src="js/ui.js?v=redesign-20261122"></script>
+  <script src="js/transactions.js?v=redesign-20261122"></script>
+  <script src="js/excel.js?v=redesign-20261122"></script>
+  <script src="js/app.js?v=redesign-20261122"></script>
+  <script src="js/inventory.js?v=redesign-20261122"></script>
+  <script src="js/reports.js?v=redesign-20261122"></script>
+  <script src="js/backup.js?v=redesign-20261122"></script>
 </body>
 </html>
