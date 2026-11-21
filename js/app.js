@@ -164,40 +164,52 @@
   }
 
   /**
-   * Full-page form for registering a movement.
-   * - add:  date, product (family), gsm, multiple size+qty rows
-   * - edit: same, prefilled from an existing movement GROUP; children are
-   *   replaced atomically (audited). Legacy single rows open a simple modal.
+   * Unified movement form: ONE movement can mix إضافة and صرف rows.
+   * Every size row carries its own type toggle; children are stored as
+   * independent transactions sharing groupId, so balances, reports,
+   * Excel export and the audit log keep working exactly as before.
+   * - new: date, product (family), gsm, optional customer (used by صرف rows)
+   * - edit: prefilled from an existing movement GROUP; children are replaced
+   *   atomically (audited). Legacy single rows open the simple modal editor.
    */
   function txForm(host, editGroup, preset) {
     const isEdit = !!editGroup;
-    const type = preset || (editGroup ? (editGroup.add > 0 ? 'add' : 'out') : 'add');
+    const firstType = preset === 'out' ? 'out' : 'add';
     const customers = customerOptions();
     const families = CANON_FAMILIES.filter((family) =>
       App.state.products.some((p) => productFamily(p.quality) === family));
     const existing = editGroup || null;
+    const ar = () => UI.getLang() === 'ar';
+    /* editing: the group header customer = first real customer among the
+       rows (add rows are booked to الإنتاج and must not mask it) */
+    const editCustomer = existing
+      ? (existing.rows.map((r) => r.customer).find((c) => c && !isProductionCustomer(c)) || '')
+      : '';
 
     host.innerHTML = `
       <div class="page-head"><h2>${isEdit
-        ? (UI.getLang() === 'ar' ? 'تعديل حركة' : 'Edit movement')
-        : (type === 'out' ? (UI.getLang() === 'ar' ? 'حركة صرف جديدة' : 'New withdrawal') : (UI.getLang() === 'ar' ? 'حركة إنتاج جديدة' : 'New production movement'))}</h2></div>
+        ? (ar() ? 'تعديل حركة' : 'Edit movement')
+        : (ar() ? 'حركة إنتاج جديدة' : 'New production movement')}</h2></div>
       <div class="card form-card">
+        <p class="muted small form-sub">${ar()
+          ? 'لكل مقاس اختر «إضافة» (إنتاج) أو «صرف» — يمكن الجمع بينهما في الحركة نفسها. جهة الإضافة هي «الإنتاج»، وأسطر الصرف تُسجَّل باسم العميل إن وُجد.'
+          : 'For every size choose Add (production) or Withdraw — both can be mixed in one movement. Additions are booked to Production; withdrawal rows use the customer name when provided.'}</p>
         <form id="tx-form" novalidate>
           <div class="form-grid">
             <label class="field"><span>${t('date')} *</span>
               <input type="date" id="f-date" required value="${esc(existing ? existing.date : todayISO())}"></label>
             <label class="field"><span>${t('quality')} *</span>
               <select id="f-quality" required>
-                <option value="">— ${UI.getLang() === 'ar' ? 'اختر الصنف' : 'select product'} —</option>
+                <option value="">— ${ar() ? 'اختر الصنف' : 'select product'} —</option>
                 ${families.map((family) => `<option value="${esc(family)}" ${existing && productFamily(existing.quality) === family ? 'selected' : ''}>${esc(family)}</option>`).join('')}
               </select></label>
             <label class="field"><span>${t('gsm')} *</span>
               <input type="number" id="f-gsm" min="1" step="any" placeholder="135" value="${esc(existing && existing.gsm != null ? existing.gsm : '')}"></label>
-            ${type === 'out'
-              ? `<label class="field" id="f-customer-wrap"><span>${UI.getLang() === 'ar' ? 'العميل' : 'Customer'} *</span>
-                   <input type="text" id="f-customer" list="customer-list" required value="${esc(existing ? canonicalCustomer(existing.customer) : '')}">
-                   <datalist id="customer-list">${customers.map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist></label>`
-              : `<div class="field" id="f-production-note"><span>${UI.getLang() === 'ar' ? 'جهة الإضافة' : 'Addition source'}</span><strong>${UI.getLang() === 'ar' ? 'الإنتاج' : 'Production'}</strong></div>`}
+            <label class="field"><span>${ar() ? 'العميل (لأسطر الصرف)' : 'Customer (for withdrawal rows)'}</span>
+              <input type="text" id="f-customer" list="customer-list"
+                placeholder="${ar() ? 'اختياري — بدون اسم يُسجَّل الصرف على الإنتاج' : 'optional — defaults to Production'}"
+                value="${esc(editCustomer)}">
+              <datalist id="customer-list">${customers.map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist></label>
             <label class="field"><span>${t('permit')}</span>
               <input type="text" id="f-permit" value="${esc(existing ? existing.permitNo : '')}"></label>
             <label class="field"><span>${t('weight')} (${t('kg')})</span>
@@ -212,8 +224,8 @@
               <input type="text" id="f-notes" value="${esc(existing ? existing.notes : '')}"></label>
           </div>
           <section class="field field-wide" id="multi-size-section">
-            <div class="card-head-row"><strong>${UI.getLang() === 'ar' ? 'المقاسات والكميات' : 'Sizes and quantities'}</strong>
-              <button type="button" class="btn btn-ghost" id="add-size-row">+ ${UI.getLang() === 'ar' ? 'إضافة مقاس' : 'Add size'}</button></div>
+            <div class="card-head-row"><strong>${ar() ? 'المقاسات والكميات' : 'Sizes and quantities'}</strong>
+              <button type="button" class="btn btn-ghost" id="add-size-row">+ ${ar() ? 'إضافة مقاس' : 'Add size'}</button></div>
             <div id="size-rows"></div>
           </section>
           <div class="form-hint" id="balance-hint"></div>
@@ -228,21 +240,35 @@
     const form = host.querySelector('#tx-form');
     const qSel = host.querySelector('#f-quality');
     const gsmIn = host.querySelector('#f-gsm');
-    let moveType = type;
 
-    /* size rows: one row per (size, qty); existing groups prefill their lines */
+    /* size rows: each row = (نوع: إضافة/صرف, مقاس, كمية) */
     const rowsHost = host.querySelector('#size-rows');
-    const addSizeRow = (sizeValue = '', qtyValue = '') => {
+    const addSizeRow = (type = firstType, sizeValue = '', qtyValue = '') => {
       const row = document.createElement('div');
       row.className = 'size-entry-row';
+      row.dataset.type = type;
       row.innerHTML =
+        '<div class="row-type seg-control" role="group">' +
+          `<button type="button" data-t="add" class="${type === 'add' ? 'active' : ''}">${ar() ? 'إضافة' : 'Add'}</button>` +
+          `<button type="button" data-t="out" class="${type === 'out' ? 'active' : ''}">${ar() ? 'صرف' : 'Withdraw'}</button>` +
+        '</div>' +
         '<label class="field"><span>' + t('size') + ' *</span><input class="line-size" type="number" min="1" step="any" placeholder="100"></label>' +
         '<label class="field"><span class="line-qty-label"></span><input class="line-qty" type="number" min="1" step="1" placeholder="0"></label>' +
         '<button type="button" class="btn btn-ghost remove-size-row" aria-label="remove">×</button>' +
         '<div class="line-balance small"></div>';
       row.querySelector('.line-size').value = sizeValue == null ? '' : sizeValue;
       row.querySelector('.line-qty').value = qtyValue == null ? '' : qtyValue;
-      row.querySelector('.line-qty-label').textContent = (moveType === 'add' ? t('addQty') : t('outQty')) + ' *';
+      const setQtyLabel = () => {
+        row.querySelector('.line-qty-label').textContent =
+          (row.dataset.type === 'add' ? t('addQty') : t('outQty')) + ' *';
+      };
+      setQtyLabel();
+      row.querySelectorAll('.row-type button').forEach((b) => b.addEventListener('click', () => {
+        row.dataset.type = b.dataset.t;
+        row.querySelectorAll('.row-type button').forEach((x) => x.classList.toggle('active', x === b));
+        setQtyLabel();
+        row.querySelector('.line-size').dispatchEvent(new Event('input'));
+      }));
       rowsHost.appendChild(row);
       row.querySelector('.remove-size-row').addEventListener('click', () => {
         if (rowsHost.querySelectorAll('.size-entry-row').length === 1) {
@@ -257,9 +283,9 @@
         const hint = row.querySelector('.line-balance');
         if (q && gsm > 0 && size > 0) {
           const bal = balanceOf(q, gsm, size);
-          let txt = (UI.getLang() === 'ar' ? 'الرصيد الحالي: ' : 'Current balance: ') + fmtNum(bal.net);
-          if (moveType === 'out' && Number(row.querySelector('.line-qty').value) > bal.net) {
-            txt += (UI.getLang() === 'ar' ? ' — الكمية أكبر من الرصيد' : ' — exceeds balance');
+          let txt = (ar() ? 'الرصيد الحالي: ' : 'Current balance: ') + fmtNum(bal.net);
+          if (row.dataset.type === 'out' && Number(row.querySelector('.line-qty').value) > bal.net) {
+            txt += (ar() ? ' — الكمية أكبر من الرصيد' : ' — exceeds balance');
           }
           hint.textContent = txt;
         } else hint.textContent = '';
@@ -268,33 +294,36 @@
       row.querySelector('.line-qty').addEventListener('input', () => { updateLineHint(); updateHint(); });
       return row;
     };
-    host.querySelector('#add-size-row').addEventListener('click', () => { addSizeRow(); updateHint(); });
+    host.querySelector('#add-size-row').addEventListener('click', () => { addSizeRow(firstType); updateHint(); });
     if (isEdit && existing) {
-      existing.rows.forEach((r) => addSizeRow(r.size, r.addQty || r.outQty || 0));
+      existing.rows.forEach((r) => addSizeRow((Number(r.addQty) || 0) > 0 ? 'add' : 'out', r.size, r.addQty || r.outQty || 0));
     } else {
-      addSizeRow();
+      addSizeRow(firstType);
     }
-    qSel.addEventListener('change', () => {
+    const refreshLineHints = () => {
       rowsHost.querySelectorAll('.size-entry-row').forEach((row) => row.querySelector('.line-size').dispatchEvent(new Event('input')));
-    });
-    gsmIn.addEventListener('input', () => {
-      rowsHost.querySelectorAll('.size-entry-row').forEach((row) => row.querySelector('.line-size').dispatchEvent(new Event('input')));
-    });
+    };
+    qSel.addEventListener('change', refreshLineHints);
+    gsmIn.addEventListener('input', refreshLineHints);
 
     function updateHint() {
       const hint = host.querySelector('#balance-hint');
       if (!hint) return;
       const lines = readLines();
       if (!qSel.value || !Number(gsmIn.value) || !lines.length) { hint.innerHTML = ''; return; }
-      const g = global.CALC.round6(lines.reduce((s, l) => s + l.qty, 0));
-      hint.innerHTML = (UI.getLang() === 'ar' ? 'إجمالي الكمية: ' : 'Total quantity: ') + `<strong>${fmtNum(g)}</strong>`;
+      const addSum = global.CALC.round6(lines.filter((l) => l.type === 'add').reduce((s, l) => s + l.qty, 0));
+      const outSum = global.CALC.round6(lines.filter((l) => l.type === 'out').reduce((s, l) => s + l.qty, 0));
+      const parts = [];
+      if (addSum) parts.push((ar() ? 'إجمالي الإضافة: ' : 'Total additions: ') + `<strong>${fmtNum(addSum)}</strong>`);
+      if (outSum) parts.push((ar() ? 'إجمالي الصرف: ' : 'Total withdrawals: ') + `<strong>${fmtNum(outSum)}</strong>`);
+      hint.innerHTML = parts.join(' &nbsp;•&nbsp; ') || '';
     }
-    [qSel, gsmIn].forEach((i) => i.addEventListener('change', updateHint));
 
     host.querySelector('#f-cancel').addEventListener('click', () => navigate(history_source || 'history'));
 
     function readLines() {
       return [...host.querySelectorAll('.size-entry-row')].map((row) => ({
+        type: row.dataset.type === 'out' ? 'out' : 'add',
         size: Number(row.querySelector('.line-size').value),
         qty: Number(row.querySelector('.line-qty').value),
       })).filter((l) => Number.isFinite(l.size) && l.size > 0);
@@ -306,12 +335,12 @@
       errBox.textContent = '';
       const quality = qSel.value.trim();
       const gsm = gsmIn.value ? Number(gsmIn.value) : null;
-      const customer = type === 'add' ? 'الإنتاج' : host.querySelector('#f-customer').value.trim();
+      const headerCustomer = host.querySelector('#f-customer').value.trim();
       const lines = readLines();
       const header = {
         date: host.querySelector('#f-date').value,
         quality, gsm,
-        customer,
+        customer: headerCustomer, /* resolved per row below */
         permitNo: host.querySelector('#f-permit').value.trim(),
         weight: host.querySelector('#f-weight').value === '' ? null : Number(host.querySelector('#f-weight').value),
         settlement: host.querySelector('#f-settlement').value,
@@ -319,59 +348,69 @@
         source: isEdit ? (existing.source || 'manual') : 'manual',
       };
 
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(header.date) || !quality || !Number.isFinite(gsm) || gsm <= 0 ||
-          (type === 'out' && !header.customer) || !lines.length) {
-        errBox.textContent = UI.getLang() === 'ar'
-          ? 'أكمل التاريخ والصنف والجرام' + (type === 'out' ? ' والعميل' : '') + '، وأدخل مقاسًا صحيحًا لكل سطر.'
-          : 'Complete date, product and GSM' + (type === 'out' ? ' and customer' : '') + ', then enter a valid size in every row.';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(header.date) || !quality || !Number.isFinite(gsm) || gsm <= 0 || !lines.length) {
+        errBox.textContent = ar()
+          ? 'أكمل التاريخ والصنف والجرام، وأدخل مقاسًا صحيحًا لكل سطر.'
+          : 'Complete date, product and GSM, then enter a valid size in every row.';
         return;
       }
       if (lines.some((l) => !Number.isFinite(l.qty) || l.qty <= 0)) {
-        errBox.textContent = UI.getLang() === 'ar'
+        errBox.textContent = ar()
           ? 'أدخل كمية صحيحة أكبر من صفر لكل مقاس.'
           : 'Enter a quantity greater than zero for every size.';
         return;
       }
-      const uniqueSizes = new Set(lines.map((l) => String(l.size)));
-      if (uniqueSizes.size !== lines.length) {
-        errBox.textContent = UI.getLang() === 'ar'
-          ? 'يوجد مقاس مكرر. اجمع الكمية الخاصة به في سطر واحد.'
-          : 'A size is repeated. Combine its quantity into one row.';
+      const dupKey = (l) => l.type + '|' + String(l.size);
+      const seenKeys = new Set();
+      let duplicated = false;
+      for (const l of lines) {
+        if (seenKeys.has(dupKey(l))) { duplicated = true; break; }
+        seenKeys.add(dupKey(l));
+      }
+      if (duplicated) {
+        errBox.textContent = ar()
+          ? 'يوجد مقاس مكرر بنفس النوع (إضافة/صرف). اجمع كميته في سطر واحد.'
+          : 'A size is repeated with the same type. Combine its quantity into one row.';
         return;
       }
 
+      /* one child row per size line; additions always booked to الإنتاج,
+         withdrawals use the header customer when provided */
       const pending = lines.map((l) => Object.assign({}, header, {
         size: l.size,
-        addQty: type === 'add' ? l.qty : 0,
-        outQty: type === 'out' ? l.qty : 0,
+        addQty: l.type === 'add' ? l.qty : 0,
+        outQty: l.type === 'out' ? l.qty : 0,
+        customer: l.type === 'add' ? 'الإنتاج' : (headerCustomer || 'الإنتاج'),
       }));
       /* withdrawal above balance → explicit confirmation, never silent */
-      const negative = pending.filter((line) => type === 'out' &&
+      const negative = pending.filter((line) => line.outQty > 0 &&
         balanceOf(quality, gsm, line.size).net - line.outQty < 0);
       if (negative.length) {
         const ok = await confirmDialog({
           title: t('confirm'),
-          message: UI.getLang() === 'ar'
+          message: ar()
             ? `تنبيه: الصرف أكبر من الرصيد في ${negative.length} مقاس (${negative.map((n) => n.size).join('، ')}). هل تريد المتابعة؟`
             : `Warning: withdrawal exceeds stock for ${negative.length} size(s) (${negative.map((n) => n.size).join(', ')}). Continue?`,
-          danger: true, yesLabel: UI.getLang() === 'ar' ? 'متابعة بالسالب' : 'Proceed',
+          danger: true, yesLabel: ar() ? 'متابعة بالسالب' : 'Proceed',
         });
         if (!ok) return;
       }
 
       try {
         if (isEdit) {
-          await global.TX.replaceMovement(existing, pending, type);
-          toast(UI.getLang() === 'ar' ? 'تم تحديث الحركة وتحديث الرصيد تلقائيًا' : 'movement updated, balances recalculated', 'ok');
+          await global.TX.replaceMovement(existing, pending);
+          toast(ar() ? 'تم تحديث الحركة وتحديث الرصيد تلقائيًا' : 'movement updated, balances recalculated', 'ok');
         } else {
           const groupId = nextGroupId();
           for (const line of pending) await global.TX.addTransaction(Object.assign({ groupId }, line));
-          toast(UI.getLang() === 'ar'
+          toast(ar()
             ? `تم تسجيل ${pending.length} مقاس وتحديث الأرصدة`
             : `${pending.length} size(s) saved and balances updated`, 'ok');
         }
         await refresh();
-        navigate(type === 'add' ? 'additions' : 'withdrawals');
+        const hasAdd = pending.some((l) => l.addQty > 0);
+        const hasOut = pending.some((l) => l.outQty > 0);
+        navigate(hasAdd && hasOut ? 'history' : (hasOut ? 'withdrawals' : 'additions'));
       } catch (saveError) {
         if (saveError && saveError.type === 'validation') {
           errBox.innerHTML = saveError.errors.map((x) => `• ${esc(x.msg)}`).join('<br>');
@@ -476,26 +515,31 @@
           const act = btn.dataset.act;
           const group = curGroups.find((g) => g.key === key);
           if (!group) return;
+          /* the list view may show only one side (add/out rows) of a mixed
+             movement — edit & delete must always operate on the FULL group */
+          const full = group.groupId
+            ? App.buildGroups(App.state.transactions.filter((r) => r.groupId === group.groupId))[0]
+            : group;
           if (act === 'edit') {
-            if (group.groupId) {
-              App.pendingEdit = group;
+            if (full.groupId) {
+              App.pendingEdit = full;
               history_source = opts.preset === 'add' ? 'additions' : opts.preset === 'out' ? 'withdrawals' : 'history';
               navigate('addtx');
             } else {
-              openLegacyEditModal(group.rows[0]);
+              openLegacyEditModal(full.rows[0]);
             }
           } else if (act === 'del') {
             const ok = await confirmDialog({
               title: lang ? 'حذف حركة' : 'Delete movement',
               message: lang
-                ? (group.rows.length > 1
-                  ? `سيتم حذف الحركة بكل مقاساتها (${group.rows.length} سطر) نهائيًا وتحديث الرصيد تلقائيًا.\nالصنف: ${group.quality} — الجرام: ${group.gsm}\nالمقاسات: ${group.sizesLabel}`
-                  : `سيتم حذف الحركة نهائيًا وتحديث الرصيد تلقائيًا.\nالصنف: ${group.quality} — الجرام: ${group.gsm} — المقاس: ${group.rows[0].size} — الكمية: ${group.add || group.out}`)
-                : `Delete this movement permanently and recalculate balances?\n${group.quality} / ${group.gsm} — ${group.sizesLabel}`,
-              danger: true, extra: lang ? `<code>${esc(group.date)} — ${esc(canonicalCustomer(group.customer) || '')}</code>` : '',
+                ? (full.rows.length > 1
+                  ? `سيتم حذف الحركة بكل مقاساتها (${full.rows.length} سطر) نهائيًا وتحديث الرصيد تلقائيًا.\nالصنف: ${full.quality} — الجرام: ${full.gsm}\nالمقاسات: ${full.sizesLabel}`
+                  : `سيتم حذف الحركة نهائيًا وتحديث الرصيد تلقائيًا.\nالصنف: ${full.quality} — الجرام: ${full.gsm} — المقاس: ${full.rows[0].size} — الكمية: ${full.add || full.out}`)
+                : `Delete this movement permanently and recalculate balances?\n${full.quality} / ${full.gsm} — ${full.sizesLabel}`,
+              danger: true, extra: lang ? `<code>${esc(full.date)} — ${esc(canonicalCustomer(full.customer) || '')}</code>` : '',
             });
             if (ok) {
-              await global.TX.deleteMovement(group);
+              await global.TX.deleteMovement(full);
               toast(lang ? 'تم الحذف وتحديث الرصيد' : 'deleted, balances updated', 'ok');
               await refresh();
             }

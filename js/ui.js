@@ -8,7 +8,7 @@
   const I18N = {
     ar: {
       appName: 'نظام إدارة رصيد المخزن',
-      dashboard: 'الرئيسية', inventory: 'رصيد المخزن', addtx: 'تسجيل حركة',
+      dashboard: 'الرئيسية', inventory: 'رصيد المخزن', addtx: 'حركة إنتاج جديدة',
       additions: 'إنتاج وإضافات', withdrawals: 'الصرف والمبيعات', history: 'سجل الحركات',
       reports: 'التقارير والطباعة', products: 'إدارة الأصناف', backup: 'النسخ الاحتياطي',
       settings: 'الإعدادات',
@@ -36,7 +36,7 @@
     },
     en: {
       appName: 'Inventory Balance System',
-      dashboard: 'Dashboard', inventory: 'Inventory', addtx: 'Add Transaction',
+      dashboard: 'Dashboard', inventory: 'Inventory', addtx: 'New movement',
       additions: 'Additions', withdrawals: 'Withdrawals', history: 'History',
       reports: 'Reports & Printing', products: 'Products', backup: 'Backup & Restore',
       settings: 'Settings',
