@@ -189,7 +189,7 @@
     host.innerHTML = `
       <div class="page-head"><h2>${isEdit
         ? (ar() ? 'تعديل حركة' : 'Edit movement')
-        : (ar() ? 'حركة إنتاج جديدة' : 'New production movement')}</h2></div>
+        : (ar() ? 'حركة البكر' : 'New  movement')}</h2></div>
       <div class="card form-card">
         <p class="muted small form-sub">${ar()
           ? 'لكل مقاس اختر «إضافة» (إنتاج) أو «صرف» — يمكن الجمع بينهما في الحركة نفسها. جهة الإضافة هي «الإنتاج»، وأسطر الصرف تُسجَّل باسم العميل إن وُجد.'
