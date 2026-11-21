@@ -1,0 +1,67 @@
+/* =========================================================================
+   print.css — طباعة احترافية A4 (أبيض وأسود)
+   - hides app chrome only; the report (#print-root) stays in normal flow
+     so the browser can paginate it across pages
+   - repeated thead on every page via display: table-header-group
+   - page numbers & signatures are part of each .print-page (built by JS)
+   ========================================================================= */
+
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}
+
+@media print {
+
+  /* hide the app chrome — keep #print-root in flow for pagination */
+  .sidebar, .topbar, .bottom-nav, .nav-backdrop, #toast-host, .modal-overlay,
+  .nav-burger, .install-btn { display: none !important; }
+
+  /* hide report controls, keep only the paginated preview */
+  .page-head, .report-picker, #rep-filters, .rep-actions { display: none !important; }
+
+  html, body {
+    background: #fff !important;
+    margin: 0 !important; padding: 0 !important;
+    font-size: 12.5px !important;
+  }
+
+  .app-shell { display: block !important; }
+  .app-main { padding: 0 !important; display: block !important; }
+  .view { padding: 0 !important; max-width: none !important; margin: 0 !important; }
+  #print-root { display: block !important; background: #fff !important; }
+
+  .print-page {
+    width: auto !important;
+    height: auto !important;
+    min-height: auto !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    page-break-after: always;
+    break-after: page;
+    display: block !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+  .print-page:last-child { page-break-after: auto; break-after: auto; }
+
+  /* repeat table headers on every printed page */
+  .rp-table thead { display: table-header-group; }
+  .rp-table tfoot { display: table-footer-group; }
+
+  /* professional black & white output */
+  .rp-table th, .rp-table td { border: 1px solid #444 !important; color: #000 !important; background: #fff !important; }
+  .rp-table thead th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rp-table tfoot td { background: #f3f3f3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rp-head { border-color: #000 !important; }
+  .rp-co, .rp-title { color: #000 !important; }
+  .rp-sub, .rp-meta, .rp-ob { color: #222 !important; }
+  .rp-ob { border-color: #888 !important; background: #fff !important; }
+  .rp-foot { border-color: #444 !important; }
+  .sig i { border-color: #333 !important; }
+
+  tr, td, th { page-break-inside: avoid; }
+}
