@@ -225,6 +225,9 @@
     host.querySelectorAll('#tx-type button').forEach((b) => {
       b.addEventListener('click', () => {
         moveType = b.dataset.v;
+        host.querySelectorAll('.line-qty-label').forEach((label) => {
+          label.textContent = (moveType === 'add' ? t('addQty') : t('outQty')) + ' *';
+        });
         host.querySelectorAll('#tx-type button').forEach((x) => x.classList.toggle('active', x === b));
         addIn.disabled = moveType !== 'add';
         outIn.disabled = moveType !== 'out';
