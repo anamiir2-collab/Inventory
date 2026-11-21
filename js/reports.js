@@ -130,7 +130,11 @@
           title,
           subtitle: [fmtSubtitle()],
           headers: [t('quality'), t('gsm'), t('size'), t('balance'), t('weight') + ' (' + t('kg') + ')'],
-          rows: rows.map((r) => [r.quality, fmtNum(r.gsm), fmtNum(r.size), fmtNum(r.net), fmtNum(r.weight, 3)]),
+          // Show each main product name once per consecutive group; list only its available GSM/size variants below it.
+          rows: rows.map((r, index) => [
+            index === 0 || rows[index - 1].quality !== r.quality ? r.quality : '',
+            fmtNum(r.gsm), fmtNum(r.size), fmtNum(r.net), fmtNum(r.weight, 3),
+          ]),
           totalsRow: [lang() ? 'الإجمالي' : 'Total', `${fmtNum(rows.length)} ${lang() ? 'صنف' : 'items'}`, '', fmtNum(totals.net), fmtNum(totals.weight, 3)],
           summary: current === 'stocktake' ? [
             `${lang() ? 'عدد الأصناف' : 'Items'}: ${fmtNum(rows.length)}`,
