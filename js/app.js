@@ -123,7 +123,7 @@
             </label>
             <label class="field"><span>${t('gsm')} *</span>
               <input type="number" id="f-gsm" min="1" step="any" placeholder="135" value="${esc(existing && existing.gsm != null ? existing.gsm : '')}"></label>
-            <label class="field"><span>${t('size')} *</span>
+            <label class="field" ${!isEdit ? 'hidden' : ''}><span>${t('size')} *</span>
               <input type="number" id="f-size" min="1" step="any" placeholder="100" value="${esc(existing && existing.size != null ? existing.size : '')}"></label>
             <label class="field" id="f-customer-wrap" ${type === 'add' ? 'hidden' : ''}><span>${UI.getLang() === 'ar' ? 'العميل' : 'Customer'} *</span>
               <input type="text" id="f-customer" list="customer-list" ${type === 'out' ? 'required' : 'disabled'} value="${esc(type === 'add' ? 'الإنتاج' : (existing ? existing.customer : ''))}">
@@ -131,9 +131,9 @@
             ${type === 'add' ? `<div class="field" id="f-production-note"><span>${UI.getLang() === 'ar' ? 'جهة الإضافة' : 'Addition source'}</span><strong>${UI.getLang() === 'ar' ? 'الإنتاج' : 'Production'}</strong></div>` : ''}
             <label class="field"><span>${t('permit')}</span>
               <input type="text" id="f-permit" value="${esc(existing ? existing.permitNo : '')}"></label>
-            <label class="field"><span>${t('addQty')}</span>
+            <label class="field" ${!isEdit ? 'hidden' : ''}><span>${t('addQty')}</span>
               <input type="number" id="f-add" min="0" step="1" value="${existing ? (existing.addQty || '') : ''}" ${type === 'add' ? '' : 'disabled'}></label>
-            <label class="field"><span>${t('outQty')}</span>
+            <label class="field" ${!isEdit ? 'hidden' : ''}><span>${t('outQty')}</span>
               <input type="number" id="f-out" min="0" step="1" value="${existing ? (existing.outQty || '') : ''}" ${type === 'out' ? '' : 'disabled'}></label>
             <label class="field"><span>${t('weight')} (${t('kg')})</span>
               <input type="number" id="f-weight" min="0" step="0.001" value="${esc(existing && existing.weight != null ? existing.weight : '')}"></label>
@@ -146,6 +146,11 @@
             <label class="field field-wide"><span>${t('notes')}</span>
               <input type="text" id="f-notes" value="${esc(existing ? existing.notes : '')}"></label>
           </div>
+          ${!isEdit ? `<section class="field field-wide" id="multi-size-section">
+            <div class="card-head-row"><strong>${UI.getLang() === 'ar' ? 'المقاسات والكميات' : 'Sizes and quantities'}</strong>
+              <button type="button" class="btn btn-ghost" id="add-size-row">+ ${UI.getLang() === 'ar' ? 'إضافة مقاس' : 'Add size'}</button></div>
+            <div id="size-rows"></div>
+          </section>` : ''}
           <div class="form-hint" id="balance-hint"></div>
           <div class="form-error" id="form-error" role="alert"></div>
           <div class="form-actions">
@@ -163,6 +168,50 @@
     const outIn = host.querySelector('#f-out');
     const custIn = host.querySelector('#f-customer');
     let moveType = type;
+
+    /* New movements can contain several sizes, all sharing the same header details. */
+    if (!isEdit) {
+      const rowsHost = host.querySelector('#size-rows');
+      const addSizeRow = (sizeValue = '', qtyValue = '') => {
+        const row = document.createElement('div');
+        row.className = 'form-grid size-entry-row';
+        row.style.cssText = 'align-items:end;margin:10px 0;padding:12px;border:1px solid var(--border,#ddd);border-radius:10px';
+        row.innerHTML = '<label class="field"><span>' + t('size') + ' *</span><input class="line-size" type="number" min="1" step="any" placeholder="100"></label>' +
+          '<label class="field"><span class="line-qty-label"></span><input class="line-qty" type="number" min="1" step="1" placeholder="0"></label>' +
+          '<button type="button" class="btn btn-ghost remove-size-row">×</button>' +
+          '<div class="form-hint line-balance field-wide"></div>';
+        row.querySelector('.line-size').value = sizeValue;
+        row.querySelector('.line-qty').value = qtyValue;
+        row.querySelector('.line-qty-label').textContent = (moveType === 'add' ? t('addQty') : t('outQty')) + ' *';
+        rowsHost.appendChild(row);
+        row.querySelector('.remove-size-row').addEventListener('click', () => {
+          if (rowsHost.querySelectorAll('.size-entry-row').length === 1) {
+            row.querySelector('.line-size').value = '';
+            row.querySelector('.line-qty').value = '';
+          } else row.remove();
+        });
+        const updateLineHint = () => {
+          const size = Number(row.querySelector('.line-size').value);
+          const q = qSel.value, gsm = Number(gsmIn.value);
+          const hint = row.querySelector('.line-balance');
+          if (q && gsm > 0 && size > 0) {
+            const bal = balanceOf(q, gsm, size);
+            hint.textContent = (UI.getLang() === 'ar' ? 'الرصيد الحالي: ' : 'Current balance: ') + fmtNum(bal.net);
+            if (moveType === 'out' && Number(row.querySelector('.line-qty').value) > bal.net) {
+              hint.textContent += UI.getLang() === 'ar' ? ' — الكمية أكبر من الرصيد' : ' — quantity exceeds balance';
+            }
+          } else hint.textContent = '';
+        };
+        row.querySelector('.line-size').addEventListener('input', updateLineHint);
+        row.querySelector('.line-qty').addEventListener('input', updateLineHint);
+        return row;
+      };
+      host.querySelector('#add-size-row').addEventListener('click', () => addSizeRow());
+      addSizeRow();
+      const refreshLineHints = () => rowsHost.querySelectorAll('.size-entry-row').forEach((row) => row.querySelector('.line-size').dispatchEvent(new Event('input')));
+      qSel.addEventListener('change', refreshLineHints);
+      gsmIn.addEventListener('input', refreshLineHints);
+    }
 
     /* prefill gsm/size when choosing a known product (unless editing) */
     qSel.addEventListener('change', () => {
@@ -271,6 +320,61 @@
         notes: host.querySelector('#f-notes').value.trim(),
         source: isEdit ? existing.source : 'manual',
       };
+
+      /* Multi-size save path for new entries. Each size is stored as its own
+         transaction so existing balances, reports, exports and history remain compatible. */
+      if (!isEdit) {
+        const lines = [...host.querySelectorAll('.size-entry-row')].map((row) => ({
+          size: Number(row.querySelector('.line-size').value),
+          qty: Number(row.querySelector('.line-qty').value),
+        }));
+        if (!data.date || !quality || !Number.isFinite(gsm) || gsm <= 0 || !data.customer ||
+            !lines.length || lines.some((line) => !Number.isFinite(line.size) || line.size <= 0 || !Number.isFinite(line.qty) || line.qty <= 0)) {
+          errBox.textContent = UI.getLang() === 'ar'
+            ? 'أكمل التاريخ والصنف والجرام، وأدخل مقاسًا وكمية صحيحة لكل سطر.'
+            : 'Complete date, product and GSM, then enter a valid size and quantity for every row.';
+          return;
+        }
+        const uniqueSizes = new Set(lines.map((line) => String(line.size)));
+        if (uniqueSizes.size !== lines.length) {
+          errBox.textContent = UI.getLang() === 'ar'
+            ? 'يوجد مقاس مكرر. اجمع الكمية الخاصة به في سطر واحد.'
+            : 'A size is repeated. Combine its quantity into one row.';
+          return;
+        }
+        const pending = lines.map((line) => Object.assign({}, data, {
+          size: line.size,
+          addQty: moveType === 'add' ? line.qty : 0,
+          outQty: moveType === 'out' ? line.qty : 0,
+        }));
+        const negative = pending.filter((line) => moveType === 'out' &&
+          balanceOf(quality, gsm, line.size).net - line.outQty < 0);
+        if (negative.length) {
+          const ok = await confirmDialog({
+            title: t('confirm'),
+            message: UI.getLang() === 'ar'
+              ? 'تنبيه: صرف كمية أكبر من الرصيد في ' + negative.length + ' مقاس. هل تريد المتابعة؟'
+              : 'Warning: the withdrawal exceeds available stock for ' + negative.length + ' size(s). Continue?',
+            danger: true, yesLabel: UI.getLang() === 'ar' ? 'متابعة بالسالب' : 'Proceed',
+          });
+          if (!ok) return;
+        }
+        try {
+          for (const line of pending) await global.TX.addTransaction(line);
+          toast(UI.getLang() === 'ar'
+            ? 'تم تسجيل ' + pending.length + ' مقاس وتحديث الأرصدة'
+            : pending.length + ' sizes saved and balances updated', 'ok');
+          await refresh();
+          navigate(moveType === 'add' ? 'additions' : 'withdrawals');
+        } catch (saveError) {
+          if (saveError && saveError.type === 'validation') {
+            errBox.textContent = saveError.errors.map((item) => item.msg).join(' — ');
+          } else {
+            errBox.textContent = String(saveError.message || saveError);
+          }
+        }
+        return;
+      }
 
       /* validation */
       const errors = global.TX.validate(data);
