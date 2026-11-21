@@ -123,7 +123,7 @@
             </label>
             <label class="field"><span>${t('gsm')} *</span>
               <input type="number" id="f-gsm" min="1" step="any" placeholder="135" value="${esc(existing && existing.gsm != null ? existing.gsm : '')}"></label>
-            <label class="field" ${!isEdit ? 'hidden' : ''}><span>${t('size')} *</span>
+            <label class="field" ${!isEdit ? 'style="display:none"' : ''}><span>${t('size')} *</span>
               <input type="number" id="f-size" min="1" step="any" placeholder="100" value="${esc(existing && existing.size != null ? existing.size : '')}"></label>
             <label class="field" id="f-customer-wrap" ${type === 'add' ? 'hidden' : ''}><span>${UI.getLang() === 'ar' ? 'العميل' : 'Customer'} *</span>
               <input type="text" id="f-customer" list="customer-list" ${type === 'out' ? 'required' : 'disabled'} value="${esc(type === 'add' ? 'الإنتاج' : (existing ? existing.customer : ''))}">
@@ -131,9 +131,9 @@
             ${type === 'add' ? `<div class="field" id="f-production-note"><span>${UI.getLang() === 'ar' ? 'جهة الإضافة' : 'Addition source'}</span><strong>${UI.getLang() === 'ar' ? 'الإنتاج' : 'Production'}</strong></div>` : ''}
             <label class="field"><span>${t('permit')}</span>
               <input type="text" id="f-permit" value="${esc(existing ? existing.permitNo : '')}"></label>
-            <label class="field" ${!isEdit ? 'hidden' : ''}><span>${t('addQty')}</span>
+            <label class="field" ${!isEdit ? 'style="display:none"' : ''}><span>${t('addQty')}</span>
               <input type="number" id="f-add" min="0" step="1" value="${existing ? (existing.addQty || '') : ''}" ${type === 'add' ? '' : 'disabled'}></label>
-            <label class="field" ${!isEdit ? 'hidden' : ''}><span>${t('outQty')}</span>
+            <label class="field" ${!isEdit ? 'style="display:none"' : ''}><span>${t('outQty')}</span>
               <input type="number" id="f-out" min="0" step="1" value="${existing ? (existing.outQty || '') : ''}" ${type === 'out' ? '' : 'disabled'}></label>
             <label class="field"><span>${t('weight')} (${t('kg')})</span>
               <input type="number" id="f-weight" min="0" step="0.001" value="${esc(existing && existing.weight != null ? existing.weight : '')}"></label>
@@ -255,19 +255,20 @@
     });
 
     function updateHint() {
-      const gsm = gsmIn.value, size = sizeIn.value, q = qSel.value;
       const hint = host.querySelector('#balance-hint');
+      if (!isEdit) { hint.innerHTML = ''; return; }
+      const gsm = gsmIn.value, size = sizeIn.value, q = qSel.value;
       if (q && gsm && size) {
         const b = balanceOf(q, Number(gsm), Number(size));
         hint.innerHTML = UI.getLang() === 'ar'
-          ? `الرصيد الحالي لهذا الصنف: <strong>${fmtNum(b.net)}</strong> ${t('rolls')} — الإضافات ${fmtNum(b.add)} — الصرف ${fmtNum(b.out)}`
-          : `Current balance: <strong>${fmtNum(b.net)}</strong> — add ${fmtNum(b.add)} — out ${fmtNum(b.out)}`;
+          ? `الرصيد الحالي لهذا الصنف: <strong>${fmtNum(b.net)}</strong> ${t('rolls')}`
+          : `Current balance: <strong>${fmtNum(b.net)}</strong>`;
         if (moveType === 'out' && Number(outIn.value) > b.net) {
           hint.innerHTML += ` <span class="warn-text">⚠ ${UI.getLang() === 'ar' ? 'الكمية أكبر من الرصيد الحالي' : 'qty exceeds current balance'}</span>`;
         }
       } else hint.innerHTML = '';
     }
-    [gsmIn, sizeIn, addIn, outIn].forEach((i) => i.addEventListener('input', updateHint));
+    if (isEdit) [gsmIn, sizeIn, addIn, outIn].forEach((i) => i.addEventListener('input', updateHint));
 
     /* inline new product */
     host.querySelector('#btn-new-product').addEventListener('click', () => {
