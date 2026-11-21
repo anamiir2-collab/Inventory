@@ -233,7 +233,37 @@
         };
       }
 
-      // Hide zero-only summary lines so reports show only meaningful, available data.
+      // Hide zero values consistently in every report view and Excel export.
+      // Keep text labels and non-zero values; blank only cells that represent numeric zero.
+      const isZeroDisplay = (value) => {
+        if (typeof value === 'number') return Number.isFinite(value) && value === 0;
+        if (typeof value !== 'string') return false;
+        const normalized = value.trim().replace(/,/g, '');
+        return normalized !== '' && /^[-+]?0+(?:\\.0+)?$/.test(normalized);
+      };
+      const hideZeroCells = (row) => Array.isArray(row)
+        ? row.map((cell) => isZeroDisplay(cell) ? '' : cell)
+        : row;
+      if (model) {
+        model.rows = (model.rows || []).map(hideZeroCells);
+        if (model.totalsRow) model.totalsRow = hideZeroCells(model.totalsRow);
+        // Remove summary statements whose reported numeric values are all zero.
+        if (Array.isArray(model.summary)) {
+          model.summary = model.summary.filter((line) => {
+            const values = String(line).match(/(?:[:：]\\s*)([-+]?\\d[\\d,]*(?:\\.\\d+)?)/g) || [];
+            return values.length === 0 || values.some((part) => {
+              const number = Number(part.replace(/^.*[:：]\\s*/, '').replace(/,/g, ''));
+              return Number.isFinite(number) && number !== 0;
+            });
+          });
+        }
+        if (Array.isArray(model.openingClosing)) {
+          model.openingClosing = model.openingClosing.filter((line) => {
+            const match = String(line).match(/[:：]\\s*([-+]?\\d[\\d,]*(?:\\.\\d+)?)/);
+            return !match || Number(match[1].replace(/,/g, '')) !== 0;
+          });
+        }
+      }
       if (model && Array.isArray(model.summary)) {
         model.summary = model.summary.filter((line) => !/(?:^|[:：])\s*(?:0+(?:[.,]0+)?)(?:\s|$)/.test(String(line)));
       }
