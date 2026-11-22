@@ -356,7 +356,7 @@
           <div class="sig-row">
             <div class="sig"><span>${lang() ? 'أمين المخزن' : 'Storekeeper'}</span><i></i></div>
             <div class="sig"><span>${lang() ? 'المحاسب' : 'Accountant'}</span><i></i></div>
-            <div class="sig"><span>${lang() ? 'مدير المخزن' : 'Warehouse manager'}</span><i></i></div>
+            <div class="sig"><span>${lang() ? 'مدير المبيعات' : 'Warehouse manager'}</span><i></i></div>
           </div>
         </div>
       </div>`);
