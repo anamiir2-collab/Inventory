@@ -16,6 +16,7 @@
     { id: 'balance', icon: '📊', name: 'تقرير الرصيد الحالي', en: 'Current balance report' },
     { id: 'additions', icon: '➕', name: 'تقرير حركة الإضافات', en: 'Additions report' },
     { id: 'withdrawals', icon: '➖', name: 'تقرير حركة الصرف', en: 'Withdrawals report' },
+    { id: 'issuedocs', icon: '🧾', name: 'تقرير أذون الصرف', en: 'Issue documents report' },
     { id: 'product', icon: '📦', name: 'تقرير حركة صنف معين', en: 'Product movement report' },
     { id: 'customer', icon: '👤', name: 'تقرير حركة عميل معين', en: 'Customer movement report' },
     { id: 'period', icon: '🗓', name: 'تقرير حركة المخزن خلال فترة محددة', en: 'Period movement report' },
@@ -63,6 +64,7 @@
         balance: ['product', 'gsm', 'size'],
         additions: ['from', 'to', 'product', 'gsm', 'size', 'customer'],
         withdrawals: ['from', 'to', 'product', 'gsm', 'size', 'customer'],
+        issuedocs: ['from', 'to', 'cls'],
         product: ['from', 'to', 'productCombo'],
         customer: ['from', 'to', 'customer'],
         period: ['from', 'to', 'product', 'gsm', 'size', 'customer', 'type'],
@@ -103,6 +105,8 @@
         add(`<label class="fl"><span>${t('customer')}</span><select id="rf-customer"><option value="">${lang() ? '— اختر العميل —' : '— select —'}</option>${customers.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>`);
       if (needs.includes('type'))
         add(`<label class="fl"><span>${t('type')}</span><select id="rf-type"><option value="">${t('all')}</option><option value="add">${t('add')}</option><option value="out">${t('out')}</option></select></label>`);
+      if (needs.includes('cls'))
+        add(`<label class="fl"><span>${t('classification')}</span><select id="rf-cls"><option value="">${t('all')}</option><option value="ض">${t('tax')}</option><option value="غ">${t('nontax')}</option></select></label>`);
       const btnWrap = el(`<div class="fl fl-btn"><button class="btn btn-primary" id="rf-run">${lang() ? 'عرض التقرير' : 'Generate'}</button></div>`);
       F.appendChild(btnWrap);
       btnWrap.querySelector('#rf-run').addEventListener('click', build);
@@ -131,34 +135,68 @@
       const title = lang() ? rep.name : rep.en;
 
       if (current === 'balance' || current === 'stocktake') {
-        let rows = App.state.products.map((p) => {
-          const b = App.state.balances.get(p.combo);
-          const net = b ? b.net : 0;
-          return { quality: p.quality, family: familyOf(p.quality), gsm: p.gsm, size: p.size, net, weight: global.CALC.productWeight(p.size, net, wf), combo: p.combo };
-        }).filter(filterCombo).filter((r) => r.net !== 0);
+        /* full hierarchy: Product → GSM → Roll Weight → Size */
+        let rows = [...App.state.balancesW.values()].map((b) => ({
+          quality: b.quality, family: familyOf(b.quality), gsm: b.gsm,
+          weight: b.weight, size: b.size, net: b.net,
+          weightLabel: b.weight == null ? '—' : fmtNum(b.weight),
+          estWeight: global.CALC.productWeight(b.size, b.net, wf),
+        })).filter(filterCombo).filter((r) => r.net !== 0);
         rows.sort((a, b) => {
           const ia = CANON.indexOf(a.family), ib = CANON.indexOf(b.family);
           const oa = ia < 0 ? CANON.length : ia, ob = ib < 0 ? CANON.length : ib;
-          return oa - ob || a.family.localeCompare(b.family, 'ar') || Number(a.gsm) - Number(b.gsm) || Number(a.size) - Number(b.size);
+          return oa - ob || a.family.localeCompare(b.family, 'ar') || Number(a.gsm) - Number(b.gsm) ||
+            (a.weight == null ? -1 : b.weight == null ? 1 : a.weight - b.weight) || Number(a.size) - Number(b.size);
         });
         const totals = {
           net: global.CALC.round6(rows.reduce((s, r) => s + r.net, 0)),
-          weight: global.CALC.round6(rows.reduce((s, r) => s + r.weight, 0)),
+          weight: global.CALC.round6(rows.reduce((s, r) => s + r.estWeight, 0)),
         };
         model = {
           title,
           subtitle: [fmtSubtitle()],
-          headers: [t('quality'), t('gsm'), t('size'), t('balance'), t('weight') + ' (' + t('kg') + ')'],
+          headers: [t('quality'), t('gsm'), t('rollWeight'), t('size'), t('balance'), lang() ? 'الوزن التقديري' : 'Est. weight' + ' (' + t('kg') + ')'],
           // Show each main product name once per consecutive group; list only its variants below it.
           rows: rows.map((r, index) => [
             index === 0 || rows[index - 1].family !== r.family ? r.family : '',
-            fmtNum(r.gsm), fmtNum(r.size), fmtNum(r.net), fmtNum(r.weight, 3),
+            fmtNum(r.gsm), r.weightLabel, fmtNum(r.size), fmtNum(r.net), fmtNum(r.estWeight, 3),
           ]),
-          totalsRow: [lang() ? 'الإجمالي' : 'Total', `${fmtNum(rows.length)} ${lang() ? 'صنف' : 'items'}`, '', fmtNum(totals.net), fmtNum(totals.weight, 3)],
+          totalsRow: [lang() ? 'الإجمالي' : 'Total', `${fmtNum(rows.length)} ${lang() ? 'صنف' : 'items'}`, '', '', fmtNum(totals.net), fmtNum(totals.weight, 3)],
           summary: current === 'stocktake' ? [
             `${lang() ? 'عدد الأصناف' : 'Items'}: ${fmtNum(rows.length)}`,
             `${lang() ? 'أصناف برصيد سالب' : 'Negative-balance items'}: ${fmtNum(rows.filter((r) => r.net < 0).length)}`,
           ] : null,
+        };
+      } else if (current === 'issuedocs') {
+        const cls = val('rf-cls');
+        let docs = App.collectIssueDocs(App.state.transactions).filter((d) =>
+          (!from || d.date >= from) && (!to || d.date <= to) && (!cls || d.classification === cls));
+        docs.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.rows[0].id || 0) - (a.rows[0].id || 0)));
+        const rows = [];
+        for (const d of docs) {
+          for (const sg of d.docGroups) {
+            for (const s of sg.sizes) {
+              rows.push([d.permitNo || '—', fmtDate(d.date), d.customer || '',
+                d.classification ? global.TX.CLS_LABEL[d.classification] : '—',
+                sg.family, fmtNum(sg.gsm), sg.weight == null ? '—' : fmtNum(sg.weight),
+                fmtNum(s.size), fmtNum(s.qty)]);
+            }
+          }
+        }
+        const totalRolls = docs.reduce((s, d) => s + d.totalRolls, 0);
+        const nTax = docs.filter((d) => d.classification === 'ض').length;
+        const nNon = docs.filter((d) => d.classification === 'غ').length;
+        model = {
+          title,
+          subtitle: [fmtSubtitle(), `${t('from')}: ${from ? fmtDate(from) : '—'}   ${t('to')}: ${to ? fmtDate(to) : '—'}`],
+          summary: [
+            `${lang() ? 'عدد الأذون' : 'Documents'}: ${fmtNum(docs.length)} (${lang() ? 'ضريبي' : 'tax'}: ${fmtNum(nTax)} — ${lang() ? 'غير ضريبي' : 'non-tax'}: ${fmtNum(nNon)})`,
+            `${t('totalRolls')}: ${fmtNum(totalRolls)}`,
+          ],
+          headers: [t('docNo'), t('date'), t('customer'), t('classification'), t('quality'),
+            t('gsm'), t('rollWeight'), t('size'), t('outQty')],
+          rows,
+          totalsRow: [lang() ? 'الإجمالي' : 'Total', `${fmtNum(docs.length)} ${lang() ? 'إذن' : 'docs'}`, '', '', '', '', '', '', fmtNum(totalRolls)],
         };
       } else if (current === 'additions' || current === 'withdrawals') {
         const isAdd = current === 'additions';
@@ -356,7 +394,7 @@
           <div class="sig-row">
             <div class="sig"><span>${lang() ? 'أمين المخزن' : 'Storekeeper'}</span><i></i></div>
             <div class="sig"><span>${lang() ? 'المحاسب' : 'Accountant'}</span><i></i></div>
-            <div class="sig"><span>${lang() ? 'مدير المبيعات' : 'Warehouse manager'}</span><i></i></div>
+            <div class="sig"><span>${lang() ? 'مدير المخزن' : 'Warehouse manager'}</span><i></i></div>
           </div>
         </div>
       </div>`);

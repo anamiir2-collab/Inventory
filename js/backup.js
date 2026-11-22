@@ -163,7 +163,7 @@
     host.querySelector('#bk-import').addEventListener('click', () => openImportDialog(false));
     host.querySelector('#bk-import-replace').addEventListener('click', () => openImportDialog(true));
     host.querySelector('#bk-exp-inv').addEventListener('click', () => {
-      global.EXCEL.exportInventory(App.state.products, App.state.balances, App.state.settings.weightFactor);
+      global.EXCEL.exportInventoryBuckets([...App.state.balancesW.values()], App.state.settings.weightFactor);
       toast(lang() ? 'تم التنزيل' : 'downloaded', 'ok');
     });
     host.querySelector('#bk-exp-tx').addEventListener('click', () => {
@@ -273,12 +273,64 @@
             <input id="set-wf" type="number" step="0.1" min="0" value="${App.state.settings.weightFactor}"></label>
           <button class="btn btn-primary" id="set-save-wf">${t('save')}</button>
         </div>
+        <div class="card">
+          <h3>🔢 ${lang() ? 'ترقيم أذون الصرف' : 'Issue document numbering'}</h3>
+          <p class="muted small">${lang()
+            ? 'تسلسلان مستقلان تمامًا: الرقم المقترح لكل تصنيف = القيمة المحفوظة هنا (تُبدأ تلقائيًا من أكبر رقم تاريخي + 1). تغييرها لا يعدّل أي إذن محفوظ، والتكرار داخل نفس التصنيف يُرفض عند الحفظ.'
+            : 'Two fully independent sequences: the suggested number per classification = the stored value (initialized from the largest historical number + 1). Changing it never modifies saved documents; duplicates within one classification are rejected on save.'}</p>
+          <div class="form-grid">
+            <label class="field"><span>${lang() ? 'الرقم القادم — ضريبي' : 'Next number — tax'}</span>
+              <input id="set-seq-tax" type="number" min="1" step="1"></label>
+            <label class="field"><span>${lang() ? 'الرقم القادم — غير ضريبي' : 'Next number — non-tax'}</span>
+              <input id="set-seq-nontax" type="number" min="1" step="1"></label>
+          </div>
+          <button class="btn btn-primary" id="set-save-seq">${t('save')}</button>
+        </div>
         <div class="card danger-zone">
           <h3>⚠️ ${lang() ? 'منطقة الخطر' : 'Danger zone'}</h3>
           <p class="muted small">${lang() ? 'حذف كل البيانات نهائيًا. لا يتم أبدًا حذف البيانات تلقائيًا — هذا الزر يدوي فقط ويتطلب كتابة كلمة التأكيد.' : 'Delete all data permanently. Requires typing a confirmation word.'}</p>
           <button class="btn btn-danger" id="set-wipe">🗑 ${lang() ? 'حذف كل البيانات' : 'Delete all data'}</button>
         </div>
       </div>`;
+
+    /* document numbering sequences (independent tax / non-tax) */
+    global.TX.nextDocNumbers().then((n) => {
+      const taxIn = host.querySelector('#set-seq-tax');
+      const nonIn = host.querySelector('#set-seq-nontax');
+      if (taxIn) taxIn.value = n.tax;
+      if (nonIn) nonIn.value = n.nontax;
+    });
+    host.querySelector('#set-save-seq').addEventListener('click', async () => {
+      const taxIn = host.querySelector('#set-seq-tax');
+      const nonIn = host.querySelector('#set-seq-nontax');
+      const setSeq = async (key, input, cls) => {
+        const v = Number(input.value);
+        if (!Number.isFinite(v) || v < 1) return;
+        const all = await global.DB.getAll('transactions');
+        let max = 0;
+        for (const r of all) {
+          if ((Number(r.outQty) || 0) <= 0 || (r.settlement || '') !== cls) continue;
+          const n2 = parseInt(String(r.permitNo || '').trim(), 10);
+          if (Number.isFinite(n2) && n2 > max) max = n2;
+        }
+        if (v <= max) {
+          const ok = await confirmDialog({
+            title: lang() ? 'تأكيد الرقم' : 'Confirm number',
+            message: lang()
+              ? `توجد أذون في تصنيف «${cls === 'ض' ? 'ضريبي' : 'غير ضريبي'}» بأرقام تصل إلى ${max}. الرقم الذي اخترته قد يسبب تكرارًا — سيظل الحفظ يرفض الأرقام المكررة. متابعة؟`
+              : `Documents in this classification already reach number ${max}. Saving will still reject duplicates. Continue?`,
+            danger: true,
+          });
+          if (!ok) return;
+        }
+        await global.DB.setSetting(key, Math.round(v));
+      };
+      await setSeq('docSeqTax', taxIn, 'ض');
+      await setSeq('docSeqNontax', nonIn, 'غ');
+      const n = await global.TX.nextDocNumbers();
+      taxIn.value = n.tax; nonIn.value = n.nontax;
+      toast(lang() ? 'تم حفظ تسلسل الترقيم' : 'numbering saved', 'ok');
+    });
 
     host.querySelector('#set-save-co').addEventListener('click', async () => {
       await global.DB.setSetting('companyName', host.querySelector('#set-company').value.trim());

@@ -144,6 +144,30 @@
       }));
     },
 
+    /* Atomic cross-store work unit: `workFn` runs inside ONE readwrite
+       transaction over several stores and queues its own requests (add/put/
+       getAll...). Resolves with workFn's return value on complete; any
+       abort/error rejects with the queued failure, so document saving +
+       numbering counters can never be half-applied. */
+    atomic(storeNames, workFn) {
+      return open().then((db) => new Promise((resolve, reject) => {
+        let t;
+        try {
+          t = db.transaction(storeNames, 'readwrite');
+        } catch (err) { reject(err); return; }
+        let result = null, fail = null;
+        try {
+          result = workFn(t, (e) => { fail = e || fail; });
+        } catch (err) {
+          fail = err;
+          try { t.abort(); } catch (e2) { /* already aborted */ }
+        }
+        t.oncomplete = () => resolve(result);
+        t.onerror = () => reject(fail || t.error);
+        t.onabort = () => reject(fail || t.error || new Error('transaction aborted'));
+      }));
+    },
+
     /* ---------- settings ---------- */
     getSetting(key, fallback) {
       return DB.get('settings', key).then((v) => (v === undefined ? fallback : v.value));

@@ -60,6 +60,61 @@
     return cleanStr(quality) !== '' && toNumberOrRaw(gsm) !== null && toNumberOrRaw(size) !== null;
   }
 
+  /* ---- roll-weight dimension (وزن الرولة) ----
+     The hierarchy is Product → GSM → Roll Weight KG → Size → Quantity, so
+     two rolls with different weights are NEVER interchangeable. The weight
+     lives on the existing `weight` field (Excel column B «الوزن»). Legacy
+     rows without a weight form their own bucket '—' and stay untouched. */
+  function weightKey(weight) {
+    return weight === null || weight === undefined || weight === '' ? '—' : String(Number(weight));
+  }
+  function comboKeyW(quality, gsm, weight, size) {
+    return comboKey(quality, gsm, size) + '||W:' + weightKey(weight);
+  }
+  function comboKeyWOf(txRow) {
+    return comboKeyW(txRow.quality, txRow.gsm, txRow.weight, txRow.size);
+  }
+  /* GROUP key WITHOUT size: one issue-document group holds many sizes under
+     the same (product, gsm, roll weight) — used to rebuild groups from rows */
+  function comboGroupW(quality, gsm, weight) {
+    return cleanStr(quality) + '||' + String(toNumberOrRaw(gsm)) + '||W:' + weightKey(weight);
+  }
+  function comboGroupWOf(txRow) {
+    return comboGroupW(txRow.quality, txRow.gsm, txRow.weight);
+  }
+
+  /**
+   * Same SUMIFS logic as computeBalances but with the roll-weight dimension:
+   * grouped by (quality || gsm || size || weight).
+   * @returns {Map} key → { quality, gsm, size, weight, add, out, net }
+   */
+  function computeBalancesByWeight(transactions) {
+    const map = new Map();
+    for (const t of transactions) {
+      const key = comboKeyWOf(t);
+      let row = map.get(key);
+      if (!row) {
+        row = {
+          quality: cleanStr(t.quality), gsm: toNumberOrRaw(t.gsm),
+          size: toNumberOrRaw(t.size), weight: (t.weight === '' || t.weight == null) ? null : Number(t.weight),
+          add: 0, out: 0, net: 0,
+        };
+        map.set(key, row);
+      }
+      const a = Number(t.addQty) || 0;
+      const o = Number(t.outQty) || 0;
+      row.add += a;
+      row.out += o;
+      row.net += a - o;
+    }
+    for (const row of map.values()) {
+      row.add = round6(row.add);
+      row.out = round6(row.out);
+      row.net = round6(row.net);
+    }
+    return map;
+  }
+
   /* ---- the confirmed balance engine ---- */
 
   /**
@@ -138,6 +193,7 @@
   global.CALC = {
     DEFAULT_WEIGHT_FACTOR,
     cleanStr, toNumberOrRaw, comboKey, comboKeyOf, isComboComplete,
+    weightKey, comboKeyW, comboKeyWOf, comboGroupW, comboGroupWOf, computeBalancesByWeight,
     computeBalances, productWeight, openingBalance, sameCombo,
     grandTotals, round6,
   };

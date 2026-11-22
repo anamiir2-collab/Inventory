@@ -359,7 +359,7 @@
     return `${base}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.xlsx`;
   }
 
-  /* رصيد المخزن export */
+  /* رصيد المخزن export — 3-dim (compat, tests) */
   function exportInventory(products, balances, weightFactor) {
     const wb = newWb();
     const aoa = [['الصنف', 'الجرام (GSM)', 'المقاس (Size)', 'رصيد المخزن', 'الوزن']];
@@ -374,6 +374,27 @@
     aoa.push(['الإجمالي', '', '', global.CALC.round6(totBal), global.CALC.round6(totWeight)]);
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 26 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+    ws['!views'] = [{ RTL: true }];
+    XLSX.utils.book_append_sheet(wb, ws, 'رصيد المخزن');
+    XLSX.writeFile(wb, stampFileName('رصيد_المخزن'), WRITE_OPTS);
+  }
+
+  /* رصيد المخزن export — full hierarchy: Product → GSM → Roll Weight → Size */
+  function exportInventoryBuckets(buckets, weightFactor) {
+    const wb = newWb();
+    const aoa = [['الصنف', 'الجرام (GSM)', 'وزن الرولة (كجم)', 'المقاس (Size)', 'الإضافات', 'الصرف', 'رصيد المخزن (لفات)', 'الوزن التقديري (كجم)']];
+    let totAdd = 0, totOut = 0, totNet = 0, totWeight = 0;
+    const rows = buckets.slice().sort((a, b) =>
+      global.CALC.comboKeyWOf(a).localeCompare(global.CALC.comboKeyWOf(b)));
+    for (const b of rows) {
+      const w = global.CALC.productWeight(b.size, b.net, weightFactor);
+      totAdd += b.add; totOut += b.out; totNet += b.net; totWeight += w;
+      aoa.push([b.quality, b.gsm, b.weight == null ? '' : b.weight, b.size, b.add, b.out, b.net, w]);
+    }
+    aoa.push(['الإجمالي', '', '', '', global.CALC.round6(totAdd), global.CALC.round6(totOut),
+      global.CALC.round6(totNet), global.CALC.round6(totWeight)]);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 26 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 18 }];
     ws['!views'] = [{ RTL: true }];
     XLSX.utils.book_append_sheet(wb, ws, 'رصيد المخزن');
     XLSX.writeFile(wb, stampFileName('رصيد_المخزن'), WRITE_OPTS);
@@ -403,7 +424,7 @@
   global.EXCEL = {
     SYNONYMS_TX, SYNONYMS_PROD, norm, findSheet, mapColumns, findHeaderRow,
     excelDateToStr, parseWorkbook, classifyImport, commitImport, buildTxSheet,
-    exportInventory, exportTransactions, exportReportAOA, TX_EXPORT_HEADERS,
+    exportInventory, exportInventoryBuckets, exportTransactions, exportReportAOA, TX_EXPORT_HEADERS,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.EXCEL;
 })(typeof window !== 'undefined' ? window : globalThis);
