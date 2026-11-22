@@ -19,15 +19,15 @@
   ],
   "shortcuts": [
     {
-      "name": "حركة إنتاج جديدة (إضافة/صرف)",
-      "short_name": "حركة",
-      "url": "./index.html#addtx",
+      "name": "حركة متابعة البكر — إضافة إنتاج",
+      "short_name": "إضافة إنتاج",
+      "url": "./index.html#baker-add",
       "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "التقارير والطباعة",
-      "short_name": "تقارير",
-      "url": "./index.html#reports",
+      "name": "أذون الصرف",
+      "short_name": "أذون الصرف",
+      "url": "./index.html#issuedocs",
       "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]

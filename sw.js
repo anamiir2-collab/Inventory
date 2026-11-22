@@ -6,7 +6,7 @@
    ========================================================================= */
 'use strict';
 
-const CACHE = 'inv-pwa-v8-andalus';
+const CACHE = 'inv-pwa-v9-baker';
 
 const PRECACHE = [
   './',
@@ -21,6 +21,7 @@ const PRECACHE = [
   './js/excel.js',
   './js/app.js',
   './js/inventory.js',
+  './js/issuedocs.js',
   './js/reports.js',
   './js/backup.js',
   './vendor/xlsx.full.min.js',
