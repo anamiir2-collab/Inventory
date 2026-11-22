@@ -277,10 +277,74 @@ td.empty, .empty { text-align: center; color: var(--text-2); padding: 1.8rem !im
 .badge-warn { background: var(--amber-50); color: var(--warning); }
 .badge-void { background: #EFE9D9; color: var(--text-2); font-size: .7rem; margin-inline-start: .25rem; }
 .badge-multi { background: var(--gold-soft); color: var(--gold); font-size: .72rem; margin-inline-start: .25rem; border: 1px solid var(--gold-line); }
+.badge-tax { background: var(--green-50); color: var(--primary); border: 1px solid #D5E3DC; direction: rtl; }
+.badge-nontax { background: var(--amber-50); color: var(--warning); border: 1px solid #F2DCB3; direction: rtl; }
 .bal-pos { background: var(--teal-50); color: var(--secondary); }
 .bal-zero { background: var(--amber-50); color: var(--warning); }
 .bal-neg { background: var(--danger); color: #fff; }
 .warn-text { color: var(--warning); font-weight: 700; }
+
+/* ============ حركة متابعة البكر — بطاقتا العملية ============ */
+.op-grid { display: grid; gap: .8rem; grid-template-columns: 1fr; margin-bottom: 1rem; }
+.op-card {
+  display: flex; flex-direction: column; gap: .3rem; text-align: start;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1rem 1.1rem; cursor: pointer;
+  transition: box-shadow .18s, transform .18s, border-color .18s;
+  position: relative; overflow: hidden;
+}
+.op-card::before {
+  content: ''; position: absolute; top: 0; inset-inline: 0; height: 7px;
+  background-image: var(--pat-arch); background-size: 26px 10px; background-repeat: repeat-x; opacity: .55;
+}
+.op-card:hover { transform: translateY(-1px); border-color: var(--gold); box-shadow: 0 3px 8px rgba(51,42,24,.08), 0 10px 26px rgba(51,42,24,.08); }
+.op-ic { font-size: 1.4rem; }
+.op-title { font-weight: 800; font-size: 1.05rem; color: var(--primary-dark); }
+.op-desc { color: var(--text-2); font-size: .84rem; line-height: 1.6; }
+.op-add { border-inline-start: 4px solid var(--secondary); }
+.op-issue { border-inline-start: 4px solid var(--gold); }
+
+/* ============ أسطر المقاسات (عناوين مرة واحدة) ============ */
+.sz-head {
+  display: grid; grid-template-columns: 1fr 1fr 2.6rem; gap: .6rem;
+  padding: 0 .15rem .3rem; border-bottom: 1px solid var(--gold-line);
+  font-size: .76rem; font-weight: 700; color: var(--text-2);
+  margin-bottom: .45rem;
+}
+.sz-row {
+  display: grid; grid-template-columns: 1fr 1fr 2.6rem; gap: .6rem;
+  align-items: center; margin: .45rem 0;
+}
+.sz-row .line-balance { grid-column: 1 / -1; color: var(--text-2); font-size: .76rem; min-height: 1em; }
+.sz-row .remove-size-row { padding: .5rem .6rem; font-size: 1rem; }
+#ba-add-row, .g-add-size { margin-top: .4rem; }
+
+/* ============ مجموعات إذن الصرف ============ */
+.issue-group {
+  border: 1px solid var(--gold-line); border-inline-start: 4px solid var(--gold);
+  border-radius: var(--radius-sm); background: #FFFBF3;
+  padding: .8rem .85rem .7rem; margin: .7rem 0;
+}
+.issue-group-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .5rem; }
+.issue-group-head .g-index { color: var(--gold); font-size: .9rem; }
+.issue-group .form-grid { margin-bottom: .5rem; }
+.issue-group-foot { display: flex; align-items: center; justify-content: space-between; margin-top: .5rem; }
+.issue-group-foot .g-total strong { color: var(--primary-dark); }
+.low-stock-card strong { color: var(--warning); }
+.low-stock-card div { margin-top: .25rem; }
+
+/* ============ إذن صرف — عرض المستند ============ */
+.doc-meta { width: 100%; border-collapse: collapse; margin: 8px 0 10px; font-size: 12.5px; }
+.doc-meta th, .doc-meta td { border: 1px solid #999; padding: 4px 8px; text-align: start; }
+.doc-meta th { background: #F3EDDF; width: 12%; white-space: nowrap; }
+.doc-meta td { width: 38%; }
+.doc-group { margin: 10px 0; page-break-inside: avoid; break-inside: avoid; }
+.doc-group-title { font-size: 12px; font-weight: 800; color: #134E4A; background: #F6F2E9; border: 1px solid #E2D3AE; border-radius: 6px; padding: 4px 8px; margin-bottom: 5px; }
+.doc-total { margin-top: 8px; }
+.doc-total .doc-total-label { font-weight: 800; background: #F3EDDF; width: 70%; }
+.doc-total .doc-total-num { font-weight: 800; font-size: 14px; color: #134E4A; }
+.doc-notes { margin-top: 8px; font-size: 12px; color: #333; }
+.doc-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 
 /* ================= buttons & inputs ================= */
 .btn {
@@ -476,6 +540,7 @@ body.modal-open { overflow: hidden; }
   .form-grid { grid-template-columns: 1fr 1fr; }
   .report-picker { grid-template-columns: repeat(3, 1fr); }
   .grid-2 { grid-template-columns: 1fr 1fr; }
+  .op-grid { grid-template-columns: 1fr 1fr; }
   .size-entry-row { grid-template-columns: auto 1fr 1fr auto 1.2fr; }
   .size-entry-row .line-balance { grid-column: auto; align-self: center; }
 }

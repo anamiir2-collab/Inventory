@@ -18,7 +18,11 @@
   .nav-burger, .install-btn { display: none !important; }
 
   /* hide report controls, keep only the paginated preview */
-  .page-head, .report-picker, #rep-filters, .rep-actions { display: none !important; }
+  .page-head, .report-picker, #rep-filters, .rep-actions, .doc-actions,
+  .card.filters, .pager { display: none !important; }
+
+  /* the issue-document view renders only its own A4 page */
+  .view > .card.error-card { display: block !important; }
 
   html, body {
     background: #fff !important;
@@ -64,4 +68,13 @@
   .sig i { border-color: #333 !important; }
 
   tr, td, th { page-break-inside: avoid; }
+
+  /* إذن صرف — professional black & white document */
+  .doc-meta th, .doc-meta td { border: 1px solid #444 !important; color: #000 !important; background: #fff !important; }
+  .doc-meta th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .doc-group { page-break-inside: avoid; break-inside: avoid; }
+  .doc-group-title { color: #000 !important; background: #fff !important; border-color: #444 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .doc-total .doc-total-label { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .doc-total .doc-total-num { color: #000 !important; }
+  .doc-notes { color: #000 !important; }
 }
